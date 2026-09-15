@@ -534,6 +534,63 @@ describe("convention data types", () => {
     ).toEqual(["missing required key"]);
   });
 
+  it("rejects an out-of-range fill for the numpy temporal types", () => {
+    const dt = { name: "numpy.datetime64", configuration: { unit: "s", scale_factor: 1 } };
+    expect(messages(array({ data_type: dt, fill_value: -9223372036854775808n }))).toEqual([]);
+    expect(messages(array({ data_type: dt, fill_value: 9223372036854775808n }))).toEqual([
+      'expected an integer in [-9223372036854775808, 9223372036854775807] or "NaT" for data type "numpy.datetime64"',
+    ]);
+  });
+
+  it("rejects struct fields that break the field rules, nested structs included", () => {
+    const configured = (fields: unknown[]) =>
+      flattenTree(
+        validateArraySemanticsV3(
+          array({ data_type: { name: "struct", configuration: { fields } }, fill_value: {} }),
+        ),
+      ).filter((issue) => issue.path[0] === "data_type");
+    expect(
+      configured([
+        { name: "a", data_type: "int8" },
+        { name: "a", data_type: "string" },
+        { name: "b", data_type: { name: "int8" } },
+        {
+          name: "c",
+          data_type: {
+            name: "struct",
+            configuration: { fields: [{ name: "x", data_type: "bytes" }, { name: "x", data_type: "int8" }] },
+          },
+        },
+      ]),
+    ).toEqual([
+      {
+        path: ["data_type", "configuration", "fields", 1, "name"],
+        message: 'duplicate field name "a"',
+        kind: "invalid_value",
+      },
+      {
+        path: ["data_type", "configuration", "fields", 1, "data_type"],
+        message: '"string" is variable-length and cannot be a struct field type',
+        kind: "invalid_value",
+      },
+      {
+        path: ["data_type", "configuration", "fields", 2, "data_type"],
+        message: 'core data type "int8" must be spelled as a string in a struct field',
+        kind: "invalid_value",
+      },
+      {
+        path: ["data_type", "configuration", "fields", 3, "data_type", "configuration", "fields", 0, "data_type"],
+        message: '"bytes" is variable-length and cannot be a struct field type',
+        kind: "invalid_value",
+      },
+      {
+        path: ["data_type", "configuration", "fields", 3, "data_type", "configuration", "fields", 1, "name"],
+        message: 'duplicate field name "x"',
+        kind: "invalid_value",
+      },
+    ]);
+  });
+
   it("rejects a non-integer fill for the numpy temporal types", () => {
     expect(
       messages(
@@ -542,7 +599,9 @@ describe("convention data types", () => {
           fill_value: "2020-01-01",
         }),
       ),
-    ).toEqual(['expected an integer or "NaT" for data type "numpy.datetime64"']);
+    ).toEqual([
+      'expected an integer in [-9223372036854775808, 9223372036854775807] or "NaT" for data type "numpy.datetime64"',
+    ]);
   });
 
   it("rejects r<N> names that are not multiples of 8 and wrong-length fills", () => {
