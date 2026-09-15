@@ -6,7 +6,8 @@ import type { ChunkGridVerdict } from "./index.js";
 /**
  * One dimension's spec in a rectilinear grid: a bare integer (uniform
  * shorthand, no sum constraint) or a list of chunk sizes and
- * `[size, count]` run-length pairs that must sum to the dimension length.
+ * `[size, count]` run-length pairs that must sum to at least the dimension
+ * length (overflowing it, e.g. after the array shrinks, is permitted).
  */
 export type RectilinearDimSpec = number | Array<number | [number, number]>;
 
@@ -70,10 +71,12 @@ export function rectilinearIssues(rawGrid: unknown, shape: number[] | undefined)
           }
         }
         const extent = shape?.[dim];
-        if (extent !== undefined && total !== extent) {
+        // "The sum of the edge lengths MUST equal or exceed L. Overflowing L
+        // by multiple chunks is permitted."
+        if (extent !== undefined && total < extent) {
           issues.push({
             path: ["configuration", "chunk_shapes", dim],
-            message: `expected chunk sizes summing to ${extent} along dimension ${dim}, got ${total}`,
+            message: `expected chunk sizes summing to at least ${extent} along dimension ${dim}, got ${total}`,
             kind: "invalid_value",
           });
         }

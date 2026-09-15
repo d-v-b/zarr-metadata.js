@@ -60,6 +60,14 @@ describe("validateArraySemanticsV3", () => {
         shape: [],
         chunk_grid: { name: "regular", configuration: { chunk_shape: [] } },
       }),
+      // rectilinear: chunk sizes may overflow the dimension (e.g. after a
+      // resize shrinks the array)
+      array({
+        chunk_grid: {
+          name: "rectilinear",
+          configuration: { kind: "inline", chunk_shapes: [[6, 12], [[4, 4]]] },
+        },
+      }),
       // rectilinear: bare-int shorthand (no sum rule), explicit lists and
       // RLE pairs summing exactly, and a sharding codec dividing every
       // distinct chunk size.
@@ -193,20 +201,26 @@ describe("validateArraySemanticsV3", () => {
     ).toEqual(["expected one entry per dimension of shape (2)"]);
   });
 
-  it("rejects explicit rectilinear chunk lists that do not sum to the dimension length", () => {
+  it("rejects explicit rectilinear chunk lists that fall short of the dimension length", () => {
     expect(
       messages(
         array({
           chunk_grid: {
             name: "rectilinear",
-            configuration: { kind: "inline", chunk_shapes: [[4, [3, 2]], [5, 5, 5]] },
+            configuration: { kind: "inline", chunk_shapes: [[4, [3, 2]], [5, 5]] },
           },
         }),
       ),
     ).toEqual([
-      "expected chunk sizes summing to 12 along dimension 0, got 10",
-      "expected chunk sizes summing to 12 along dimension 1, got 15",
+      "expected chunk sizes summing to at least 12 along dimension 0, got 10",
+      "expected chunk sizes summing to at least 12 along dimension 1, got 10",
     ]);
+  });
+
+  it("rejects a non-positive regular chunk size", () => {
+    expect(
+      messages(array({ chunk_grid: { name: "regular", configuration: { chunk_shape: [0, -6] } } })),
+    ).toEqual(["expected a positive chunk size, got 0", "expected a positive chunk size, got -6"]);
   });
 
   it("rejects a sharding chunk_shape that does not divide every rectilinear chunk size", () => {
