@@ -57,7 +57,6 @@ import {
   ARRAY_METADATA_REQUIRED_KEYS_V2,
   ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
   ZARR_V2_ARRAY_ORDER,
-  ARRAY_METADATA_STANDARD_KEYS_V2,
   GROUP_METADATA_REQUIRED_KEYS_V2,
   GROUP_METADATA_STANDARD_KEYS_V2,
   type ZarrV2ArrayMetadataJSON,
@@ -581,8 +580,11 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
     return [problem([], "expected a mapping", "invalid_type")];
   }
   const doc = value;
+  // Unlike .zgroup ("Other keys MUST NOT be present"), the v2 array document
+  // is open: other keys "SHOULD NOT be present ... and SHOULD be ignored", so
+  // extras are not structural problems (the v2 semantic layer reports them
+  // as advisories).
   const problems: PathedIssue[] = missingKeys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc);
-  problems.push(...unexpectedKeys(ARRAY_METADATA_STANDARD_KEYS_V2, doc));
   problems.push(...checkLiteral(doc, "zarr_format", 2));
   const shapeProblems = validateDimSequence(doc, "shape");
   const chunksProblems = validateDimSequence(doc, "chunks");
@@ -622,9 +624,8 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
         ),
       );
     } else if (filters !== null && isDenseArray(filters)) {
-      if (filters.length === 0) {
-        problems.push(problem(["filters"], "expected at least one filter", "invalid_value"));
-      }
+      // "A list of JSON objects providing codec configurations, or null":
+      // an empty list is a list.
       filters.forEach((item, index) => {
         problems.push(...prefix("filters", prefix(index, jsonProblems(item))));
       });

@@ -72,6 +72,15 @@ describe("validateArraySemanticsV2", () => {
     }
   });
 
+  it("reports members outside the array document definition as advisories", () => {
+    expect(issues(array({ foo: 1, attributes: { merged: true } }))).toEqual([
+      {
+        path: ["foo"],
+        message: "unexpected document member (the spec says other keys SHOULD NOT be present)",
+      },
+    ]);
+  });
+
   it("rejects a typestr without a byte order", () => {
     expect(messages(array({ dtype: "f8" }))).toEqual([
       'the byte order ("<", ">", or "|") must be specified, got "f8"',
