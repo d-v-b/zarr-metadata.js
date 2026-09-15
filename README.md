@@ -93,7 +93,12 @@ raw-bits family, and the established zarr-extensions conventions —
 `string`, `bytes`, `numpy.datetime64`/`timedelta64`, and `struct` (whose
 fill is judged per field, recursively). `semantics.ts` is the
 document-walking orchestrator. Unrecognized names are skipped — the
-extension name space is open.
+extension name space is open. For v2, `validateSemanticsV2` /
+`validateArraySemanticsV2` interpret `.zarray` contents the same way:
+the `dtype` typestr grammar (byte order, kind, NumPy item size, datetime
+units, structured-dtype field rules) and the `fill_value` encoding the
+spec fixes per data type (`"NaN"`/`"Infinity"`/`"-Infinity"` for floats,
+base64 for byte strings and structured types, integer ranges).
 
 Consumers include the
 [Zarr Metadata VS Code extension](https://github.com/d-v-b/vscode-zarr).

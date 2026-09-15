@@ -51,6 +51,7 @@ export type {
 export type { RawBytesFillValue } from "./raw.js";
 export type { StringFillValue } from "./string.js";
 export type { StructConfiguration, StructField } from "./struct.js";
+export type { NumpyTypestr } from "./numpy-typestr.js";
 
 const DESCRIPTORS: readonly DataTypeDescriptor[] = [
   bool,
