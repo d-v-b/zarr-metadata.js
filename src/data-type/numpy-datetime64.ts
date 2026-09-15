@@ -15,7 +15,7 @@ export interface NumpyDatetime64Configuration {
  * Fill value of the numpy temporal data types: an integer count of
  * `unit * scale_factor` since the epoch, or the `"NaT"` sentinel.
  */
-export type NumpyDatetime64FillValue = number | "NaT";
+export type NumpyDatetime64FillValue = number | bigint | "NaT";
 
 /** Descriptor factory shared by numpy.datetime64 and numpy.timedelta64. */
 export function numpyTemporalDataType(name: string): DataTypeDescriptor {
@@ -23,7 +23,7 @@ export function numpyTemporalDataType(name: string): DataTypeDescriptor {
     matches: named(name),
     requiredConfigKeys: ["unit", "scale_factor"],
     fillIssues: (fill) =>
-      Number.isInteger(fill) || fill === "NaT"
+      Number.isInteger(fill) || typeof fill === "bigint" || fill === "NaT"
         ? []
         : simple(`expected an integer or "NaT" for data type ${JSON.stringify(name)}`),
   };

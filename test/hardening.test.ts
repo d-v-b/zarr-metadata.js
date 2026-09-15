@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  decodeStoreJson,
   dumpStoreJson,
   flattenTree,
   isGroupMetadataV3,
@@ -116,13 +117,31 @@ describe("non-plain objects are not mappings", () => {
 });
 
 describe("BigInt", () => {
-  it("is reported as non-JSON instead of crashing the renderer", () => {
-    expect(isJson(1n)).toBe(false);
-    const problems = flattenTree(validateJson({ a: 1n }));
-    expect(problems).toHaveLength(1);
-    expect(problems[0]!.path).toEqual(["a"]);
-    expect(problems[0]!.kind).toBe("invalid_type");
-    expect(problems[0]!.message).toContain("1n");
+  it("is a JSON integer", () => {
+    expect(isJson(1n)).toBe(true);
+    expect(flattenTree(validateJson({ a: [2n ** 64n, -(2n ** 63n)] }))).toEqual([]);
+    expect(
+      flattenTree(validateArrayMetadataV3({ ...VALID_ARRAY, shape: [2n ** 60n], chunk_grid: { name: "regular", configuration: { chunk_shape: [5] } } })),
+    ).toEqual([]);
+  });
+});
+
+describe("decodeStoreJson", () => {
+  it("keeps integers beyond Number.MAX_SAFE_INTEGER exact and leaves everything else as JSON.parse", () => {
+    const text =
+      '{"big": 9223372036854775808, "neg": -9223372036854775809, "safe": 9007199254740991, ' +
+      '"float": 9223372036854775808.0, "exp": 1e19, "text": "9223372036854775808"}';
+    expect(decodeStoreJson(text)).toEqual({
+      big: 9223372036854775808n,
+      neg: -9223372036854775809n,
+      safe: 9007199254740991,
+      float: 9223372036854775808,
+      exp: 1e19,
+      text: "9223372036854775808",
+    });
+    expect(decodeStoreJson(new TextEncoder().encode("[18446744073709551616]"))).toEqual([
+      18446744073709551616n,
+    ]);
   });
 });
 
@@ -164,6 +183,14 @@ describe("dumpStoreJson", () => {
   it("round-trips through loadStoreJson", () => {
     const bytes = dumpStoreJson(VALID_ARRAY, { indent: 2 });
     expect(loadStoreJson({ "zarr.json": bytes }, "zarr.json")).toEqual(VALID_ARRAY);
+  });
+
+  it("writes bigints as exact integer literals", () => {
+    const value = { fill_value: -(2n ** 63n), nested: [2n ** 64n, "zarr-metadata-bigint-1"] };
+    const text = new TextDecoder().decode(dumpStoreJson(value, { indent: 2 }));
+    expect(text).toContain("-9223372036854775808");
+    expect(text).toContain("18446744073709551616");
+    expect(decodeStoreJson(text)).toEqual(value);
   });
 
   it("throws on non-JSON values instead of silently writing null", () => {

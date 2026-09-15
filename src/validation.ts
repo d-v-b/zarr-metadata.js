@@ -17,6 +17,12 @@
  *   spelling. The shared conformance corpus avoids fixtures that hinge on
  *   this distinction.
  *
+ * Python ints are unbounded; the JS analog is `bigint`. `decodeStoreJson`
+ * keeps integer literals beyond `Number.MAX_SAFE_INTEGER` exact as bigints
+ * (bare `JSON.parse` rounds them, so e.g. an out-of-range int64 fill value
+ * becomes indistinguishable from a valid one), and every validator accepts a
+ * bigint wherever it accepts an integer.
+ *
  * Three behaviors are deliberate TS-side hardening divergences:
  *
  * - a "mapping" means a plain object (prototype `null` or
@@ -144,6 +150,7 @@ function jsonProblems(value: unknown): PathedIssue[] {
 }
 
 function validateJsonAtDepth(value: unknown, depth: number): PathedIssue[] {
+  if (typeof value === "bigint") return [];
   if (typeof value === "number") {
     if (Number.isFinite(value)) return [];
     return [problem([], `non-finite number ${value} is not JSON`, "invalid_value")];
@@ -285,13 +292,16 @@ function metadataFieldV3Problems(
 
 
 /**
- * Whether `value` is an array of integers.
+ * Whether `value` is an array of integers (numbers or bigints).
  *
  * `Number.isInteger` rejects booleans, non-finite numbers, and non-integral
  * floats, mirroring the Python bool-is-not-int rule.
  */
-function isIntSequence(value: unknown): value is number[] {
-  return isDenseArray(value) && value.every((item) => Number.isInteger(item));
+function isIntSequence(value: unknown): value is (number | bigint)[] {
+  return (
+    isDenseArray(value) &&
+    value.every((item) => typeof item === "bigint" || Number.isInteger(item))
+  );
 }
 
 /**
@@ -737,15 +747,38 @@ function storeGet(mapping: StoreMapping, key: string): Uint8Array | string | und
  * interchange encoding). Python's `json.loads` auto-detects UTF-16/32 and
  * would accept such documents; here they are reported as `invalid_json`.
  */
+/**
+ * Decode JSON text (or UTF-8 bytes) into a metadata value, keeping integers
+ * exact.
+ *
+ * Like `JSON.parse`, except an integer literal beyond
+ * `Number.MAX_SAFE_INTEGER` decodes to a `bigint` instead of a rounded
+ * `number`, so range checks such as an int64 fill value's see the value the
+ * document actually spells. Relies on `JSON.parse` source-text access
+ * (Node >= 21 and current browsers); where that is unavailable, such
+ * literals round exactly as with `JSON.parse`. Throws `SyntaxError` on
+ * malformed JSON and `TypeError` on invalid UTF-8.
+ */
+export function decodeStoreJson(raw: string | Uint8Array): unknown {
+  const text =
+    typeof raw === "string" ? raw : new TextDecoder("utf-8", { fatal: true }).decode(raw);
+  return JSON.parse(text, (_key, value: unknown, context?: { source?: string }) =>
+    typeof value === "number" &&
+    !Number.isSafeInteger(value) &&
+    context?.source !== undefined &&
+    /^-?\d+$/.test(context.source)
+      ? BigInt(context.source)
+      : value,
+  );
+}
+
 export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
   const raw = storeGet(mapping, key);
   if (raw === undefined) {
     throw new MetadataValidationError(treeOf([problem([key], "missing store key", "missing_key")]));
   }
   try {
-    const text =
-      typeof raw === "string" ? raw : new TextDecoder("utf-8", { fatal: true }).decode(raw);
-    return JSON.parse(text);
+    return decodeStoreJson(raw);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new MetadataValidationError(
@@ -758,9 +791,10 @@ export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
  * Encode a metadata document as strict RFC 8259 JSON bytes.
  *
  * Ported from the Python reference's `dump_store_json` (`allow_nan=False`):
- * a non-JSON value — a non-finite number, a `Map`, a `BigInt` — throws
+ * a non-JSON value — a non-finite number, a `Map` — throws
  * `MetadataValidationError` instead of being silently rewritten to `null`
- * the way bare `JSON.stringify` would.
+ * the way bare `JSON.stringify` would. A `bigint` is written as its exact
+ * integer literal (bare `JSON.stringify` throws on one).
  */
 export function dumpStoreJson(
   value: unknown,
@@ -768,7 +802,15 @@ export function dumpStoreJson(
 ): Uint8Array {
   const problems = jsonProblems(value);
   if (problems.length > 0) throw new MetadataValidationError(treeOf(problems));
-  return new TextEncoder().encode(JSON.stringify(value, null, options.indent));
+  // JSON.stringify cannot emit a bigint: stand each one in as a string
+  // carrying a per-call nonce, then splice the digits over its quoted form.
+  const nonce = `zarr-metadata-bigint-${crypto.randomUUID()}:`;
+  const text = JSON.stringify(
+    value,
+    (_key, item: unknown) => (typeof item === "bigint" ? `${nonce}${item}` : item),
+    options.indent,
+  ).replace(new RegExp(`"${nonce}(-?\\d+)"`, "g"), "$1");
+  return new TextEncoder().encode(text);
 }
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  decodeStoreJson,
   flattenTree,
   isEmptyTree,
   validateArraySemanticsV3,
@@ -25,6 +26,13 @@ function array(overrides: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
+/** A failure label for a test document (JSON.stringify throws on bigints). */
+function label(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) =>
+    typeof item === "bigint" ? `${item}n` : item,
+  );
+}
+
 function messages(value: unknown): string[] {
   return flattenTree(validateArraySemanticsV3(value)).map((issue) => issue.message);
 }
@@ -35,6 +43,11 @@ describe("validateArraySemanticsV3", () => {
       array({}),
       array({ data_type: "bool", fill_value: true }),
       array({ data_type: "uint8", fill_value: 255 }),
+      // exact bigint bounds, and a rounded number at the bound (lenient)
+      array({ data_type: "int64", fill_value: -9223372036854775808n }),
+      array({ data_type: "uint64", fill_value: 18446744073709551615n }),
+      array({ data_type: "int64", fill_value: 9223372036854775807 }),
+      array({ data_type: "float64", fill_value: 100000000000000000000n }),
       array({ data_type: "float32", fill_value: "NaN" }),
       array({ data_type: "float64", fill_value: "0x7ff8000000000000" }),
       array({ data_type: "complex64", fill_value: [1.5, "Infinity"] }),
@@ -113,7 +126,7 @@ describe("validateArraySemanticsV3", () => {
       "not a document",
     ];
     for (const document of valid) {
-      expect(isEmptyTree(validateArraySemanticsV3(document)), JSON.stringify(document)).toBe(true);
+      expect(isEmptyTree(validateArraySemanticsV3(document)), label(document)).toBe(true);
     }
   });
 
@@ -332,6 +345,18 @@ describe("validateArraySemanticsV3", () => {
         'expected an integer in [-2147483648, 2147483647] for data type "int32"',
       ],
       [
+        { data_type: "int64", fill_value: 9223372036854775808n },
+        'expected an integer in [-9223372036854775808, 9223372036854775807] for data type "int64"',
+      ],
+      [
+        { data_type: "int64", fill_value: -9223372036854775809n },
+        'expected an integer in [-9223372036854775808, 9223372036854775807] for data type "int64"',
+      ],
+      [
+        { data_type: "uint64", fill_value: 18446744073709551616n },
+        'expected an integer in [0, 18446744073709551615] for data type "uint64"',
+      ],
+      [
         { data_type: "float32", fill_value: "0x7ff8000000000000" },
         'expected a number, "NaN", "Infinity", "-Infinity", or a 8-hex-digit "0x..." string for data type "float32"',
       ],
@@ -345,8 +370,18 @@ describe("validateArraySemanticsV3", () => {
       ],
     ];
     for (const [overrides, message] of cases) {
-      expect(messages(array(overrides)), JSON.stringify(overrides)).toEqual([message]);
+      expect(messages(array(overrides)), label(overrides)).toEqual([message]);
     }
+  });
+
+  it("rejects an out-of-range int64 fill decoded from JSON text", () => {
+    // 2^63 and 2^63 - 1 are the same double: only exact decoding tells them apart.
+    const text = JSON.stringify(array({ data_type: "int64", fill_value: "FILL" }));
+    const decode = (fill: string) => decodeStoreJson(text.replace('"FILL"', fill));
+    expect(messages(decode("9223372036854775807"))).toEqual([]);
+    expect(messages(decode("9223372036854775808"))).toEqual([
+      'expected an integer in [-9223372036854775808, 9223372036854775807] for data type "int64"',
+    ]);
   });
 });
 

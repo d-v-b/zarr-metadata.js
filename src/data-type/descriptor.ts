@@ -50,13 +50,13 @@ export function named(matchName: string): (name: string) => boolean {
 // --- shared fill forms ------------------------------------------------------
 
 /** A float fill value: a JSON number, a non-finite sentinel, or a hex string. */
-export type FloatFillValue = number | "NaN" | "Infinity" | "-Infinity" | string;
+export type FloatFillValue = number | bigint | "NaN" | "Infinity" | "-Infinity" | string;
 
 /** A complex fill value: `[real, imaginary]`, each a float fill form. */
 export type ComplexFillValue = [FloatFillValue, FloatFillValue];
 
 export function isFloatFill(value: unknown, hexDigits: number): boolean {
-  if (typeof value === "number") return true;
+  if (typeof value === "number" || typeof value === "bigint") return true;
   if (typeof value !== "string") return false;
   if (value === "NaN" || value === "Infinity" || value === "-Infinity") return true;
   return new RegExp(`^0x[0-9a-fA-F]{${hexDigits}}$`).test(value);
@@ -79,11 +79,27 @@ export function isByteArray(value: unknown): value is number[] {
 
 // --- per-family factories ---------------------------------------------------
 
-export function intDataType(name: string, low: number, high: number): DataTypeDescriptor {
+/**
+ * An integer data type with the inclusive range `[low, high]`. A bigint or
+ * safe-integer fill is range-checked exactly. A number beyond
+ * `Number.MAX_SAFE_INTEGER` has already been rounded (bare `JSON.parse`), so
+ * it is compared in double precision — lenient at the int64/uint64 bounds
+ * rather than rejecting the valid extremes; decode with `decodeStoreJson`
+ * for an exact verdict.
+ */
+export function intDataType(name: string, low: bigint, high: bigint): DataTypeDescriptor {
+  const inRange = (fill: unknown): boolean => {
+    if (typeof fill === "bigint") return fill >= low && fill <= high;
+    if (!Number.isInteger(fill)) return false;
+    const number = fill as number;
+    return Number.isSafeInteger(number)
+      ? BigInt(number) >= low && BigInt(number) <= high
+      : number >= Number(low) && number <= Number(high);
+  };
   return {
     matches: named(name),
     fillIssues: (fill) =>
-      Number.isInteger(fill) && (fill as number) >= low && (fill as number) <= high
+      inRange(fill)
         ? []
         : simple(`expected an integer in [${low}, ${high}] for data type ${JSON.stringify(name)}`),
   };
