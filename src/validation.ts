@@ -991,7 +991,8 @@ export function safeParseConsolidatedMetadataV2(
  * Per the v3 spec an extension field is implicitly `must_understand: true`
  * unless it is an object carrying the explicit member
  * `"must_understand": false`, and an implementation MUST refuse to open a
- * node with obligated fields it does not recognize. This reports the
+ * node with obligated fields it does not recognize
+ * (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578). This reports the
  * obligation only — which fields a reader actually recognizes is the
  * reader's business, so these keys are advisory, not validation problems
  * (the document is structurally valid). Returns `[]` for anything that is

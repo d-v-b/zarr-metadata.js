@@ -64,7 +64,11 @@ export type ZarrV2ArrayMetadataJSON = ZarrV2ZArrayJSON & {
   attributes?: { [key: string]: JSONValue };
 };
 
-/** On-disk `.zgroup` file content. The spec defines exactly one field. */
+/**
+ * On-disk `.zgroup` file content. The spec defines exactly one field and
+ * forbids others.
+ *   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L306-L313
+ */
 export type ZarrV2ZGroupJSON = {
   zarr_format: 2;
 };
