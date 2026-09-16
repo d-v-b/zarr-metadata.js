@@ -102,8 +102,9 @@ export function isByteArray(value: unknown): value is number[] {
 /**
  * An integer data type with the inclusive range `[low, high]`: the fill
  * "must be a JSON number with no fraction or exponent part that is within
- * the representable range of the data type" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L60-L61). A bigint or
- * safe-integer fill is range-checked exactly. A number beyond
+ * the representable range of the data type". A bigint or safe-integer fill
+ * is range-checked exactly.
+ *   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L60-L61 A number beyond
  * `Number.MAX_SAFE_INTEGER` has already been rounded (bare `JSON.parse`), so
  * it is compared in double precision — lenient at the int64/uint64 bounds
  * rather than rejecting the valid extremes; decode with `decodeStoreJson`

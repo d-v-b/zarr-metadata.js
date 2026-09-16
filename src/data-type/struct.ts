@@ -3,8 +3,8 @@ import { fieldParts, isPlainObject } from "../guards.js";
 import { issue, named, simple, type DataTypeDescriptor } from "./descriptor.js";
 
 /**
- * Core data type names, which a struct field "MUST" spell as a string:
- * https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md#L45
+ * Core data type names, which a struct field "MUST" spell as a string.
+ *   https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md#L45
  */
 const CORE_NAMES = new Set([
   "bool",
@@ -15,8 +15,8 @@ const CORE_NAMES = new Set([
 ]);
 
 /**
- * Variable-length data types, which "MUST NOT be used as field types":
- * https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md#L48-L49
+ * Variable-length data types, which "MUST NOT be used as field types".
+ *   https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md#L48-L49
  */
 const VARIABLE_LENGTH_NAMES = new Set(["string", "bytes"]);
 
@@ -34,9 +34,10 @@ export interface StructConfiguration {
 /**
  * The zarr-extensions `struct` data type (heterogeneous record). Its fill
  * value is a JSON object mapping every field name to that field's fill
- * value, each judged recursively against the field's own data type
- * (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md#L221-L223). Field names "MUST be
- * unique" (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md#L263).
+ * value, each judged recursively against the field's own data type. Field
+ * names "MUST be unique".
+ *   https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md#L221-L223
+ *   https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md#L263
  */
 export const struct: DataTypeDescriptor = {
   matches: named("struct"),

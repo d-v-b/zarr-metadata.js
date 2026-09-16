@@ -101,9 +101,10 @@ function arraySemanticsIssuesV2(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) return [];
   const issues: PathedIssue[] = [];
   // "Other keys SHOULD NOT be present within the metadata object and SHOULD
-  // be ignored by implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92): a recommendation, so the
-  // structural layer tolerates extras; they are reported here for consumers
-  // that want to surface them (typically as warnings).
+  // be ignored by implementations": a recommendation, so the structural
+  // layer tolerates extras; they are reported here for consumers that want
+  // to surface them (typically as warnings).
+  //   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92
   for (const key of Object.keys(value)) {
     if (!(ARRAY_METADATA_STANDARD_KEYS_V2 as readonly string[]).includes(key)) {
       issues.push({
@@ -131,8 +132,9 @@ function arraySemanticsIssuesV2(value: unknown): PathedIssue[] {
  * `dtype` typestr grammar (byte order, kind code, NumPy item size, datetime
  * units), structured-dtype field rules, the `fill_value` encoding the spec
  * fixes for the data type, and — as advisories, since the spec only says
- * they "SHOULD NOT be present" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92) — members outside the array
- * document's definition. An empty tree means no rule found a violation; run the
+ * they "SHOULD NOT be present" — members outside the array document's
+ * definition.
+ *   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92 An empty tree means no rule found a violation; run the
  * structural validators for structure.
  */
 export function validateArraySemanticsV2(value: unknown): ErrorTree {

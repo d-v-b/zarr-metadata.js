@@ -27,7 +27,8 @@ export function regularIssues(rawGrid: unknown, shape: number[] | undefined): Ch
   }
   const configured = configuration?.["chunk_shape"];
   if (isIntArray(configured)) {
-    // "Chunk sizes must be greater than zero." https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40
+    // "Chunk sizes must be greater than zero."
+    //   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40
     configured.forEach((length, axis) => {
       if (length <= 0) {
         issues.push({
