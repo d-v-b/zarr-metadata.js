@@ -1,9 +1,10 @@
 /**
  * The v2 `dtype` encoding — the NumPy array-protocol typestr the spec
- * adopts for simple data types, and the `[name, typestr, shape?]` record
- * lists for structured ones — plus the spec's fill-value encodings per
- * type. Structure (string or list) is the corpus-governed structural
- * layer's business; this module interprets the contents.
+ * adopts for simple data types (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L130-L148), and the
+ * `[name, typestr, shape?]` record lists for structured ones
+ * (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L152-L176) — plus the spec's fill-value encodings per type
+ * (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L178-L194). Structure (string or list) is the corpus-governed
+ * structural layer's business; this module interprets the contents.
  */
 import type { PathedIssue } from "../errors.js";
 import { isPlainObject } from "../guards.js";
@@ -37,7 +38,12 @@ const SIZES: Partial<Record<NumpyTypestr["code"], readonly number[]>> = {
   M: [8],
 };
 
-/** Parse a typestr, or explain why it is not one (per the v2 spec's grammar). */
+/**
+ * Parse a typestr, or explain why it is not one. The grammar is the spec's
+ * three parts (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L132-L142); "The byte order MUST be specified"
+ * (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L144); datetime/timedelta types "MUST also include the units"
+ * (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L147-L148); item sizes are NumPy's, to which the spec defers.
+ */
 export function parseNumpyTypestr(
   text: string,
 ): { typestr: NumpyTypestr; problem?: undefined } | { typestr?: undefined; problem: string } {
@@ -82,8 +88,9 @@ const MAX_DTYPE_DEPTH = 64;
 
 /**
  * Problems with a v2 `dtype` value's contents, pathed relative to it: an
- * ill-formed typestr, or in a structured list a duplicate field name, a
- * negative subarray dimension, or any of these in a field's own type.
+ * ill-formed typestr, or in a structured list (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L152-L156) a duplicate
+ * field name, a negative subarray dimension, or any of these in a field's
+ * own type.
  * Values of the wrong shape (not a string or list, malformed records) are
  * the structural layer's problem and yield nothing here.
  */
@@ -120,7 +127,7 @@ export function dtypeIssuesV2(dtype: unknown, depth = 0): PathedIssue[] {
 
 const FLOAT_SENTINELS = new Set(["NaN", "Infinity", "-Infinity"]);
 
-/** A float fill: a JSON number or one of the spec's three sentinels. */
+/** A float fill: a JSON number or one of the spec's three sentinels (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L181-L189). */
 function isFloatFillV2(value: unknown): boolean {
   return (
     typeof value === "number" ||
@@ -133,7 +140,9 @@ const FLOAT_FORMS = 'a number, "NaN", "Infinity", or "-Infinity"';
 
 /**
  * Problems with a v2 `fill_value` judged against its `dtype`, pathed
- * relative to the fill. `null` is always permitted. A `dtype` this module
+ * relative to the fill: "A scalar value ... or null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L70-L71), the
+ * float sentinels (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L181-L189), and base64 for byte strings and
+ * structured types (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L194). `null` is always permitted. A `dtype` this module
  * cannot interpret (ill-formed, or not a string or list) yields nothing —
  * its own issue covers the document.
  */
@@ -142,7 +151,7 @@ export function fillIssuesV2(dtype: unknown, fill: unknown): PathedIssue[] {
   if (Array.isArray(dtype)) {
     // "If an array has ... a structured data type, and if the fill value is
     // not null, then the fill value MUST be encoded as an ASCII string using
-    // the standard Base64 alphabet."
+    // the standard Base64 alphabet." https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L194
     return typeof fill === "string" && isBase64(fill)
       ? []
       : [issue([], "expected a base64 string fill value for a structured dtype")];
@@ -182,7 +191,7 @@ export function fillIssuesV2(dtype: unknown, fill: unknown): PathedIssue[] {
     case "V":
       // "If an array has a fixed length byte string data type (e.g.,
       // "|S12") ... the fill value MUST be encoded as an ASCII string using
-      // the standard Base64 alphabet."
+      // the standard Base64 alphabet." https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L194
       return typeof fill === "string" && isBase64(fill)
         ? []
         : [issue([], `expected a base64 string fill value for dtype ${shown}`)];

@@ -580,10 +580,10 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
     return [problem([], "expected a mapping", "invalid_type")];
   }
   const doc = value;
-  // Unlike .zgroup ("Other keys MUST NOT be present"), the v2 array document
-  // is open: other keys "SHOULD NOT be present ... and SHOULD be ignored", so
-  // extras are not structural problems (the v2 semantic layer reports them
-  // as advisories).
+  // Unlike .zgroup ("Other keys MUST NOT be present",
+  // https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), the v2 array document is open: other keys "SHOULD NOT be
+  // present ... and SHOULD be ignored" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so extras are not
+  // structural problems (the v2 semantic layer reports them as advisories).
   const problems: PathedIssue[] = missingKeys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc);
   problems.push(...checkLiteral(doc, "zarr_format", 2));
   const shapeProblems = validateDimSequence(doc, "shape");
@@ -624,8 +624,8 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
         ),
       );
     } else if (filters !== null && isDenseArray(filters)) {
-      // "A list of JSON objects providing codec configurations, or null":
-      // an empty list is a list.
+      // "A list of JSON objects providing codec configurations, or null"
+      // (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
       filters.forEach((item, index) => {
         problems.push(...prefix("filters", prefix(index, jsonProblems(item))));
       });
@@ -754,7 +754,8 @@ function storeGet(mapping: StoreMapping, key: string): Uint8Array | string | und
  *
  * Like `JSON.parse`, except an integer literal beyond
  * `Number.MAX_SAFE_INTEGER` decodes to a `bigint` instead of a rounded
- * `number`, so range checks such as an int64 fill value's see the value the
+ * `number`, so range checks such as an int64 fill value's ("within the
+ * representable range of the data type", https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L60-L61) see the value the
  * document actually spells. Relies on `JSON.parse` source-text access
  * (Node >= 21 and current browsers); where that is unavailable, such
  * literals round exactly as with `JSON.parse`. Throws `SyntaxError` on

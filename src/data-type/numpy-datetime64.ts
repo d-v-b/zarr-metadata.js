@@ -23,7 +23,9 @@ export function numpyTemporalDataType(name: string): DataTypeDescriptor {
     matches: named(name),
     requiredConfigKeys: ["unit", "scale_factor"],
     // "a JSON number with no fraction or exponent part that is within the
-    // range [-2^63, 2^63 - 1]", or "NaT" (which -2^63 also spells).
+    // range [-2^63, 2^63 - 1]", or "NaT" (which -2^63 also spells):
+    // https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md#L111-L112
+    // https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.timedelta64/README.md#L114-L115
     fillIssues: (fill) =>
       isIntegerInRange(fill, -9223372036854775808n, 9223372036854775807n) || fill === "NaT"
         ? []

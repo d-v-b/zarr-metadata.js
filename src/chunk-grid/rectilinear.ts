@@ -7,7 +7,8 @@ import type { ChunkGridVerdict } from "./index.js";
  * One dimension's spec in a rectilinear grid: a bare integer (uniform
  * shorthand, no sum constraint) or a list of chunk sizes and
  * `[size, count]` run-length pairs that must sum to at least the dimension
- * length (overflowing it, e.g. after the array shrinks, is permitted).
+ * length (overflowing it, e.g. after the array shrinks, is permitted:
+ * https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md#L90).
  */
 export type RectilinearDimSpec = number | Array<number | [number, number]>;
 
@@ -73,6 +74,7 @@ export function rectilinearIssues(rawGrid: unknown, shape: number[] | undefined)
         const extent = shape?.[dim];
         // "The sum of the edge lengths MUST equal or exceed L. Overflowing L
         // by multiple chunks is permitted."
+        // https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md#L90
         if (extent !== undefined && total < extent) {
           issues.push({
             path: ["configuration", "chunk_shapes", dim],
