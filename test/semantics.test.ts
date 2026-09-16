@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  decodeStoreJson,
   flattenTree,
   isEmptyTree,
   validateArraySemanticsV3,
@@ -25,6 +26,13 @@ function array(overrides: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
+/** A failure label for a test document (JSON.stringify throws on bigints). */
+function label(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) =>
+    typeof item === "bigint" ? `${item}n` : item,
+  );
+}
+
 function messages(value: unknown): string[] {
   return flattenTree(validateArraySemanticsV3(value)).map((issue) => issue.message);
 }
@@ -35,6 +43,11 @@ describe("validateArraySemanticsV3", () => {
       array({}),
       array({ data_type: "bool", fill_value: true }),
       array({ data_type: "uint8", fill_value: 255 }),
+      // exact bigint bounds, and a rounded number at the bound (lenient)
+      array({ data_type: "int64", fill_value: -9223372036854775808n }),
+      array({ data_type: "uint64", fill_value: 18446744073709551615n }),
+      array({ data_type: "int64", fill_value: 9223372036854775807 }),
+      array({ data_type: "float64", fill_value: 100000000000000000000n }),
       array({ data_type: "float32", fill_value: "NaN" }),
       array({ data_type: "float64", fill_value: "0x7ff8000000000000" }),
       array({ data_type: "complex64", fill_value: [1.5, "Infinity"] }),
@@ -59,6 +72,14 @@ describe("validateArraySemanticsV3", () => {
       array({
         shape: [],
         chunk_grid: { name: "regular", configuration: { chunk_shape: [] } },
+      }),
+      // rectilinear: chunk sizes may overflow the dimension (e.g. after a
+      // resize shrinks the array)
+      array({
+        chunk_grid: {
+          name: "rectilinear",
+          configuration: { kind: "inline", chunk_shapes: [[6, 12], [[4, 4]]] },
+        },
       }),
       // rectilinear: bare-int shorthand (no sum rule), explicit lists and
       // RLE pairs summing exactly, and a sharding codec dividing every
@@ -105,7 +126,7 @@ describe("validateArraySemanticsV3", () => {
       "not a document",
     ];
     for (const document of valid) {
-      expect(isEmptyTree(validateArraySemanticsV3(document)), JSON.stringify(document)).toBe(true);
+      expect(isEmptyTree(validateArraySemanticsV3(document)), label(document)).toBe(true);
     }
   });
 
@@ -193,20 +214,26 @@ describe("validateArraySemanticsV3", () => {
     ).toEqual(["expected one entry per dimension of shape (2)"]);
   });
 
-  it("rejects explicit rectilinear chunk lists that do not sum to the dimension length", () => {
+  it("rejects explicit rectilinear chunk lists that fall short of the dimension length", () => {
     expect(
       messages(
         array({
           chunk_grid: {
             name: "rectilinear",
-            configuration: { kind: "inline", chunk_shapes: [[4, [3, 2]], [5, 5, 5]] },
+            configuration: { kind: "inline", chunk_shapes: [[4, [3, 2]], [5, 5]] },
           },
         }),
       ),
     ).toEqual([
-      "expected chunk sizes summing to 12 along dimension 0, got 10",
-      "expected chunk sizes summing to 12 along dimension 1, got 15",
+      "expected chunk sizes summing to at least 12 along dimension 0, got 10",
+      "expected chunk sizes summing to at least 12 along dimension 1, got 10",
     ]);
+  });
+
+  it("rejects a non-positive regular chunk size", () => {
+    expect(
+      messages(array({ chunk_grid: { name: "regular", configuration: { chunk_shape: [0, -6] } } })),
+    ).toEqual(["expected a positive chunk size, got 0", "expected a positive chunk size, got -6"]);
   });
 
   it("rejects a sharding chunk_shape that does not divide every rectilinear chunk size", () => {
@@ -318,6 +345,18 @@ describe("validateArraySemanticsV3", () => {
         'expected an integer in [-2147483648, 2147483647] for data type "int32"',
       ],
       [
+        { data_type: "int64", fill_value: 9223372036854775808n },
+        'expected an integer in [-9223372036854775808, 9223372036854775807] for data type "int64"',
+      ],
+      [
+        { data_type: "int64", fill_value: -9223372036854775809n },
+        'expected an integer in [-9223372036854775808, 9223372036854775807] for data type "int64"',
+      ],
+      [
+        { data_type: "uint64", fill_value: 18446744073709551616n },
+        'expected an integer in [0, 18446744073709551615] for data type "uint64"',
+      ],
+      [
         { data_type: "float32", fill_value: "0x7ff8000000000000" },
         'expected a number, "NaN", "Infinity", "-Infinity", or a 8-hex-digit "0x..." string for data type "float32"',
       ],
@@ -331,8 +370,18 @@ describe("validateArraySemanticsV3", () => {
       ],
     ];
     for (const [overrides, message] of cases) {
-      expect(messages(array(overrides)), JSON.stringify(overrides)).toEqual([message]);
+      expect(messages(array(overrides)), label(overrides)).toEqual([message]);
     }
+  });
+
+  it("rejects an out-of-range int64 fill decoded from JSON text", () => {
+    // 2^63 and 2^63 - 1 are the same double: only exact decoding tells them apart.
+    const text = JSON.stringify(array({ data_type: "int64", fill_value: "FILL" }));
+    const decode = (fill: string) => decodeStoreJson(text.replace('"FILL"', fill));
+    expect(messages(decode("9223372036854775807"))).toEqual([]);
+    expect(messages(decode("9223372036854775808"))).toEqual([
+      'expected an integer in [-9223372036854775808, 9223372036854775807] for data type "int64"',
+    ]);
   });
 });
 
@@ -485,6 +534,63 @@ describe("convention data types", () => {
     ).toEqual(["missing required key"]);
   });
 
+  it("rejects an out-of-range fill for the numpy temporal types", () => {
+    const dt = { name: "numpy.datetime64", configuration: { unit: "s", scale_factor: 1 } };
+    expect(messages(array({ data_type: dt, fill_value: -9223372036854775808n }))).toEqual([]);
+    expect(messages(array({ data_type: dt, fill_value: 9223372036854775808n }))).toEqual([
+      'expected an integer in [-9223372036854775808, 9223372036854775807] or "NaT" for data type "numpy.datetime64"',
+    ]);
+  });
+
+  it("rejects struct fields that break the field rules, nested structs included", () => {
+    const configured = (fields: unknown[]) =>
+      flattenTree(
+        validateArraySemanticsV3(
+          array({ data_type: { name: "struct", configuration: { fields } }, fill_value: {} }),
+        ),
+      ).filter((issue) => issue.path[0] === "data_type");
+    expect(
+      configured([
+        { name: "a", data_type: "int8" },
+        { name: "a", data_type: "string" },
+        { name: "b", data_type: { name: "int8" } },
+        {
+          name: "c",
+          data_type: {
+            name: "struct",
+            configuration: { fields: [{ name: "x", data_type: "bytes" }, { name: "x", data_type: "int8" }] },
+          },
+        },
+      ]),
+    ).toEqual([
+      {
+        path: ["data_type", "configuration", "fields", 1, "name"],
+        message: 'duplicate field name "a"',
+        kind: "invalid_value",
+      },
+      {
+        path: ["data_type", "configuration", "fields", 1, "data_type"],
+        message: '"string" is variable-length and cannot be a struct field type',
+        kind: "invalid_value",
+      },
+      {
+        path: ["data_type", "configuration", "fields", 2, "data_type"],
+        message: 'core data type "int8" must be spelled as a string in a struct field',
+        kind: "invalid_value",
+      },
+      {
+        path: ["data_type", "configuration", "fields", 3, "data_type", "configuration", "fields", 0, "data_type"],
+        message: '"bytes" is variable-length and cannot be a struct field type',
+        kind: "invalid_value",
+      },
+      {
+        path: ["data_type", "configuration", "fields", 3, "data_type", "configuration", "fields", 1, "name"],
+        message: 'duplicate field name "x"',
+        kind: "invalid_value",
+      },
+    ]);
+  });
+
   it("rejects a non-integer fill for the numpy temporal types", () => {
     expect(
       messages(
@@ -493,7 +599,9 @@ describe("convention data types", () => {
           fill_value: "2020-01-01",
         }),
       ),
-    ).toEqual(['expected an integer or "NaT" for data type "numpy.datetime64"']);
+    ).toEqual([
+      'expected an integer in [-9223372036854775808, 9223372036854775807] or "NaT" for data type "numpy.datetime64"',
+    ]);
   });
 
   it("rejects r<N> names that are not multiples of 8 and wrong-length fills", () => {

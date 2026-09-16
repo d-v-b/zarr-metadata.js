@@ -37,6 +37,7 @@ export type {
   NumpyDatetime64Configuration,
   NumpyDatetime64FillValue,
   NumpyTimeUnit,
+  NumpyTypestr,
   RawBytesFillValue,
   StringFillValue,
   StructConfiguration,

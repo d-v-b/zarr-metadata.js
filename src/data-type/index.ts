@@ -12,7 +12,12 @@ import { bool } from "./bool.js";
 import { bytes } from "./bytes.js";
 import { complex64 } from "./complex64.js";
 import { complex128 } from "./complex128.js";
-import { issue, type DataTypeDescriptor, type FillContext } from "./descriptor.js";
+import {
+  issue,
+  type ConfigContext,
+  type DataTypeDescriptor,
+  type FillContext,
+} from "./descriptor.js";
 import { float16 } from "./float16.js";
 import { float32 } from "./float32.js";
 import { float64 } from "./float64.js";
@@ -32,6 +37,7 @@ import { uint64 } from "./uint64.js";
 
 export type {
   ComplexFillValue,
+  ConfigContext,
   DataTypeDescriptor,
   FillContext,
   FloatFillValue,
@@ -45,6 +51,7 @@ export type {
 export type { RawBytesFillValue } from "./raw.js";
 export type { StringFillValue } from "./string.js";
 export type { StructConfiguration, StructField } from "./struct.js";
+export type { NumpyTypestr } from "./numpy-typestr.js";
 
 const DESCRIPTORS: readonly DataTypeDescriptor[] = [
   bool,
@@ -65,6 +72,18 @@ function descriptorFor(name: string): DataTypeDescriptor | undefined {
 // struct fields may nest structs; matches the structural layer's cap.
 const MAX_FILL_DEPTH = 64;
 
+function configIssuesFor(dataTypeField: unknown, depth: number): PathedIssue[] {
+  if (depth >= MAX_FILL_DEPTH) return [];
+  const parts = fieldParts(dataTypeField);
+  if (parts === undefined || parts.configuration === undefined) return [];
+  const descriptor = descriptorFor(parts.name);
+  if (descriptor?.configIssues === undefined) return [];
+  const context: ConfigContext = { depth, configIssuesFor };
+  return descriptor
+    .configIssues(parts.configuration, parts.name, context)
+    .map((inner) => ({ ...inner, path: ["configuration", ...inner.path] }));
+}
+
 function fillIssuesFor(dataTypeField: unknown, fill: unknown, depth: number): PathedIssue[] {
   if (depth >= MAX_FILL_DEPTH) return [];
   const parts = fieldParts(dataTypeField);
@@ -77,9 +96,9 @@ function fillIssuesFor(dataTypeField: unknown, fill: unknown, depth: number): Pa
 
 /**
  * Interpret a document's `data_type` field against its `fill_value`:
- * name-level rules, required configuration members, and the fill's JSON
- * shape (recursively, for struct). Issues are pathed from the document
- * root (`data_type` / `fill_value`).
+ * name-level rules, required configuration members, configuration prose
+ * rules, and the fill's JSON shape (recursively, for struct). Issues are
+ * pathed from the document root (`data_type` / `fill_value`).
  */
 export function dataTypeVerdict(
   rawField: unknown,
@@ -117,6 +136,9 @@ export function dataTypeVerdict(
       }
     }
   }
+  issues.push(
+    ...configIssuesFor(rawField, 0).map((inner) => ({ ...inner, path: ["data_type", ...inner.path] })),
+  );
   if (fillPresent) {
     issues.push(
       ...fillIssuesFor(rawField, fill, 0).map((inner) => ({

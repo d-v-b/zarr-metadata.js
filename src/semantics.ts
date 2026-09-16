@@ -1,5 +1,5 @@
 /**
- * Semantic (cross-field) validation for v3 array metadata: the
+ * Semantic (cross-field) validation for array metadata: the
  * orchestrator. The rules themselves live with their content —
  * `chunk-grid/`, `codec/`, and `data-type/` hold one module per
  * interpreted name (grids, codecs, data types), each with its syntax
@@ -7,7 +7,10 @@
  * reference's type layout, and the zarr-extensions registry are organized. This module only walks
  * documents: extract shape, ask each content module for its verdicts,
  * thread the chunk-size context into codec pipelines, and descend into a
- * group's inline consolidated entries.
+ * group's inline consolidated entries. For v2, `data-type/numpy-typestr`
+ * interprets `dtype` contents and `fill_value` encodings, and this module
+ * applies them to a `.zarray` document or the `.zarray` entries of a
+ * `.zmetadata` document.
  *
  * Unrecognized names are skipped everywhere — the extension name space is
  * open, and a rule that guessed would lie. This layer has no counterpart
@@ -21,8 +24,10 @@
 import { chunkGridVerdict } from "./chunk-grid/index.js";
 import { pipelineIssues } from "./codec/index.js";
 import { dataTypeVerdict } from "./data-type/index.js";
+import { dtypeIssuesV2, fillIssuesV2 } from "./data-type/numpy-typestr.js";
 import { treeOf, type ErrorTree, type PathedIssue } from "./errors.js";
 import { isIntArray, isPlainObject } from "./guards.js";
+import { ARRAY_METADATA_STANDARD_KEYS_V2 } from "./v2.js";
 
 function arraySemanticsIssues(value: unknown): PathedIssue[] {
   if (!isPlainObject(value) || value["node_type"] !== "array") return [];
@@ -88,4 +93,74 @@ function semanticsIssuesAtDepth(value: unknown, depth: number): PathedIssue[] {
  */
 export function validateSemanticsV3(value: unknown): ErrorTree {
   return treeOf(semanticsIssuesAtDepth(value, 0));
+}
+
+// --- v2 --------------------------------------------------------------------
+
+function arraySemanticsIssuesV2(value: unknown): PathedIssue[] {
+  if (!isPlainObject(value)) return [];
+  const issues: PathedIssue[] = [];
+  // "Other keys SHOULD NOT be present within the metadata object and SHOULD
+  // be ignored by implementations": a recommendation, so the structural
+  // layer tolerates extras; they are reported here for consumers that want
+  // to surface them (typically as warnings).
+  //   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92
+  for (const key of Object.keys(value)) {
+    if (!(ARRAY_METADATA_STANDARD_KEYS_V2 as readonly string[]).includes(key)) {
+      issues.push({
+        path: [key],
+        message: "unexpected document member (the spec says other keys SHOULD NOT be present)",
+        kind: "invalid_value",
+      });
+    }
+  }
+  const dtype = value["dtype"];
+  issues.push(...dtypeIssuesV2(dtype).map((issue) => ({ ...issue, path: ["dtype", ...issue.path] })));
+  if (Object.hasOwn(value, "fill_value")) {
+    issues.push(
+      ...fillIssuesV2(dtype, value["fill_value"]).map((issue) => ({
+        ...issue,
+        path: ["fill_value", ...issue.path],
+      })),
+    );
+  }
+  return issues;
+}
+
+/**
+ * Every semantic problem in a v2 array metadata document (`.zarray`): the
+ * `dtype` typestr grammar (byte order, kind code, NumPy item size, datetime
+ * units), structured-dtype field rules, the `fill_value` encoding the spec
+ * fixes for the data type, and — as advisories, since the spec only says
+ * they "SHOULD NOT be present" — members outside the array document's
+ * definition.
+ *   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92 An empty tree means no rule found a violation; run the
+ * structural validators for structure.
+ */
+export function validateArraySemanticsV2(value: unknown): ErrorTree {
+  return treeOf(arraySemanticsIssuesV2(value));
+}
+
+/**
+ * `validateArraySemanticsV2` for a `.zarray` document, or — for a
+ * `.zmetadata` document (recognized by its `zarr_consolidated_format`
+ * member) — for each `.zarray` entry of its `metadata` map, pathed through
+ * `metadata.<key>`.
+ */
+export function validateSemanticsV2(value: unknown): ErrorTree {
+  if (!isPlainObject(value)) return treeOf([]);
+  if (!Object.hasOwn(value, "zarr_consolidated_format")) return validateArraySemanticsV2(value);
+  const entries = value["metadata"];
+  if (!isPlainObject(entries)) return treeOf([]);
+  const issues: PathedIssue[] = [];
+  for (const [key, entry] of Object.entries(entries)) {
+    if (key !== ".zarray" && !key.endsWith("/.zarray")) continue;
+    issues.push(
+      ...arraySemanticsIssuesV2(entry).map((issue) => ({
+        ...issue,
+        path: ["metadata", key, ...issue.path],
+      })),
+    );
+  }
+  return treeOf(issues);
 }

@@ -17,6 +17,12 @@
  *   spelling. The shared conformance corpus avoids fixtures that hinge on
  *   this distinction.
  *
+ * Python ints are unbounded; the JS analog is `bigint`. `decodeStoreJson`
+ * keeps integer literals beyond `Number.MAX_SAFE_INTEGER` exact as bigints
+ * (bare `JSON.parse` rounds them, so e.g. an out-of-range int64 fill value
+ * becomes indistinguishable from a valid one), and every validator accepts a
+ * bigint wherever it accepts an integer.
+ *
  * Three behaviors are deliberate TS-side hardening divergences:
  *
  * - a "mapping" means a plain object (prototype `null` or
@@ -51,7 +57,6 @@ import {
   ARRAY_METADATA_REQUIRED_KEYS_V2,
   ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
   ZARR_V2_ARRAY_ORDER,
-  ARRAY_METADATA_STANDARD_KEYS_V2,
   GROUP_METADATA_REQUIRED_KEYS_V2,
   GROUP_METADATA_STANDARD_KEYS_V2,
   type ZarrV2ArrayMetadataJSON,
@@ -144,6 +149,7 @@ function jsonProblems(value: unknown): PathedIssue[] {
 }
 
 function validateJsonAtDepth(value: unknown, depth: number): PathedIssue[] {
+  if (typeof value === "bigint") return [];
   if (typeof value === "number") {
     if (Number.isFinite(value)) return [];
     return [problem([], `non-finite number ${value} is not JSON`, "invalid_value")];
@@ -285,13 +291,16 @@ function metadataFieldV3Problems(
 
 
 /**
- * Whether `value` is an array of integers.
+ * Whether `value` is an array of integers (numbers or bigints).
  *
  * `Number.isInteger` rejects booleans, non-finite numbers, and non-integral
  * floats, mirroring the Python bool-is-not-int rule.
  */
-function isIntSequence(value: unknown): value is number[] {
-  return isDenseArray(value) && value.every((item) => Number.isInteger(item));
+function isIntSequence(value: unknown): value is (number | bigint)[] {
+  return (
+    isDenseArray(value) &&
+    value.every((item) => typeof item === "bigint" || Number.isInteger(item))
+  );
 }
 
 /**
@@ -571,8 +580,13 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
     return [problem([], "expected a mapping", "invalid_type")];
   }
   const doc = value;
+  // Unlike .zgroup ("Other keys MUST NOT be present"), the v2 array document
+  // is open: other keys "SHOULD NOT be present ... and SHOULD be ignored", so
+  // extras are not structural problems (the v2 semantic layer reports them
+  // as advisories).
+  //   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313
+  //   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92
   const problems: PathedIssue[] = missingKeys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc);
-  problems.push(...unexpectedKeys(ARRAY_METADATA_STANDARD_KEYS_V2, doc));
   problems.push(...checkLiteral(doc, "zarr_format", 2));
   const shapeProblems = validateDimSequence(doc, "shape");
   const chunksProblems = validateDimSequence(doc, "chunks");
@@ -612,9 +626,9 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
         ),
       );
     } else if (filters !== null && isDenseArray(filters)) {
-      if (filters.length === 0) {
-        problems.push(problem(["filters"], "expected at least one filter", "invalid_value"));
-      }
+      // "A list of JSON objects providing codec configurations, or null":
+      // an empty list is a list.
+      //   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79
       filters.forEach((item, index) => {
         problems.push(...prefix("filters", prefix(index, jsonProblems(item))));
       });
@@ -737,15 +751,40 @@ function storeGet(mapping: StoreMapping, key: string): Uint8Array | string | und
  * interchange encoding). Python's `json.loads` auto-detects UTF-16/32 and
  * would accept such documents; here they are reported as `invalid_json`.
  */
+/**
+ * Decode JSON text (or UTF-8 bytes) into a metadata value, keeping integers
+ * exact.
+ *
+ * Like `JSON.parse`, except an integer literal beyond
+ * `Number.MAX_SAFE_INTEGER` decodes to a `bigint` instead of a rounded
+ * `number`, so range checks such as an int64 fill value's ("within the
+ * representable range of the data type") see the value the document
+ * actually spells.
+ *   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L60-L61 Relies on `JSON.parse` source-text access
+ * (Node >= 21 and current browsers); where that is unavailable, such
+ * literals round exactly as with `JSON.parse`. Throws `SyntaxError` on
+ * malformed JSON and `TypeError` on invalid UTF-8.
+ */
+export function decodeStoreJson(raw: string | Uint8Array): unknown {
+  const text =
+    typeof raw === "string" ? raw : new TextDecoder("utf-8", { fatal: true }).decode(raw);
+  return JSON.parse(text, (_key, value: unknown, context?: { source?: string }) =>
+    typeof value === "number" &&
+    !Number.isSafeInteger(value) &&
+    context?.source !== undefined &&
+    /^-?\d+$/.test(context.source)
+      ? BigInt(context.source)
+      : value,
+  );
+}
+
 export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
   const raw = storeGet(mapping, key);
   if (raw === undefined) {
     throw new MetadataValidationError(treeOf([problem([key], "missing store key", "missing_key")]));
   }
   try {
-    const text =
-      typeof raw === "string" ? raw : new TextDecoder("utf-8", { fatal: true }).decode(raw);
-    return JSON.parse(text);
+    return decodeStoreJson(raw);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new MetadataValidationError(
@@ -758,9 +797,10 @@ export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
  * Encode a metadata document as strict RFC 8259 JSON bytes.
  *
  * Ported from the Python reference's `dump_store_json` (`allow_nan=False`):
- * a non-JSON value — a non-finite number, a `Map`, a `BigInt` — throws
+ * a non-JSON value — a non-finite number, a `Map` — throws
  * `MetadataValidationError` instead of being silently rewritten to `null`
- * the way bare `JSON.stringify` would.
+ * the way bare `JSON.stringify` would. A `bigint` is written as its exact
+ * integer literal (bare `JSON.stringify` throws on one).
  */
 export function dumpStoreJson(
   value: unknown,
@@ -768,7 +808,15 @@ export function dumpStoreJson(
 ): Uint8Array {
   const problems = jsonProblems(value);
   if (problems.length > 0) throw new MetadataValidationError(treeOf(problems));
-  return new TextEncoder().encode(JSON.stringify(value, null, options.indent));
+  // JSON.stringify cannot emit a bigint: stand each one in as a string
+  // carrying a per-call nonce, then splice the digits over its quoted form.
+  const nonce = `zarr-metadata-bigint-${crypto.randomUUID()}:`;
+  const text = JSON.stringify(
+    value,
+    (_key, item: unknown) => (typeof item === "bigint" ? `${nonce}${item}` : item),
+    options.indent,
+  ).replace(new RegExp(`"${nonce}(-?\\d+)"`, "g"), "$1");
+  return new TextEncoder().encode(text);
 }
 
 // ---------------------------------------------------------------------------
@@ -943,7 +991,8 @@ export function safeParseConsolidatedMetadataV2(
  * Per the v3 spec an extension field is implicitly `must_understand: true`
  * unless it is an object carrying the explicit member
  * `"must_understand": false`, and an implementation MUST refuse to open a
- * node with obligated fields it does not recognize. This reports the
+ * node with obligated fields it does not recognize
+ * (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578). This reports the
  * obligation only — which fields a reader actually recognizes is the
  * reader's business, so these keys are advisory, not validation problems
  * (the document is structurally valid). Returns `[]` for anything that is

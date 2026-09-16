@@ -18,6 +18,17 @@ export interface FillContext {
   fillIssuesFor(dataTypeField: unknown, fill: unknown, depth: number): PathedIssue[];
 }
 
+/** Context handed to a descriptor's configuration check. */
+export interface ConfigContext {
+  /** Recursion depth (struct fields may nest structs). */
+  depth: number;
+  /**
+   * Recursive check for compound types: configuration issues of the data
+   * type named by `dataTypeField`, pathed relative to that field.
+   */
+  configIssuesFor(dataTypeField: unknown, depth: number): PathedIssue[];
+}
+
 /** Everything the semantic layer knows about one data type. */
 export interface DataTypeDescriptor {
   /** Whether this module owns the given `data_type` name. */
@@ -26,6 +37,15 @@ export interface DataTypeDescriptor {
   requiredConfigKeys?: readonly string[];
   /** Name-level validity beyond ownership (e.g. r<N>'s multiple-of-8 rule). */
   nameIssue?(name: string): string | undefined;
+  /**
+   * Prose rules on the configuration beyond member presence (the registry
+   * schemas' domain), pathed relative to the configuration object.
+   */
+  configIssues?(
+    configuration: Record<string, unknown>,
+    name: string,
+    context: ConfigContext,
+  ): PathedIssue[];
   /** Fill-value issues, pathed relative to the fill value itself. */
   fillIssues(fill: unknown, name: string, context: FillContext): PathedIssue[];
 }
@@ -50,13 +70,13 @@ export function named(matchName: string): (name: string) => boolean {
 // --- shared fill forms ------------------------------------------------------
 
 /** A float fill value: a JSON number, a non-finite sentinel, or a hex string. */
-export type FloatFillValue = number | "NaN" | "Infinity" | "-Infinity" | string;
+export type FloatFillValue = number | bigint | "NaN" | "Infinity" | "-Infinity" | string;
 
 /** A complex fill value: `[real, imaginary]`, each a float fill form. */
 export type ComplexFillValue = [FloatFillValue, FloatFillValue];
 
 export function isFloatFill(value: unknown, hexDigits: number): boolean {
-  if (typeof value === "number") return true;
+  if (typeof value === "number" || typeof value === "bigint") return true;
   if (typeof value !== "string") return false;
   if (value === "NaN" || value === "Infinity" || value === "-Infinity") return true;
   return new RegExp(`^0x[0-9a-fA-F]{${hexDigits}}$`).test(value);
@@ -79,11 +99,31 @@ export function isByteArray(value: unknown): value is number[] {
 
 // --- per-family factories ---------------------------------------------------
 
-export function intDataType(name: string, low: number, high: number): DataTypeDescriptor {
+/**
+ * An integer data type with the inclusive range `[low, high]`: the fill
+ * "must be a JSON number with no fraction or exponent part that is within
+ * the representable range of the data type". A bigint or safe-integer fill
+ * is range-checked exactly.
+ *   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L60-L61 A number beyond
+ * `Number.MAX_SAFE_INTEGER` has already been rounded (bare `JSON.parse`), so
+ * it is compared in double precision — lenient at the int64/uint64 bounds
+ * rather than rejecting the valid extremes; decode with `decodeStoreJson`
+ * for an exact verdict.
+ */
+export function isIntegerInRange(fill: unknown, low: bigint, high: bigint): boolean {
+  if (typeof fill === "bigint") return fill >= low && fill <= high;
+  if (!Number.isInteger(fill)) return false;
+  const number = fill as number;
+  return Number.isSafeInteger(number)
+    ? BigInt(number) >= low && BigInt(number) <= high
+    : number >= Number(low) && number <= Number(high);
+}
+
+export function intDataType(name: string, low: bigint, high: bigint): DataTypeDescriptor {
   return {
     matches: named(name),
     fillIssues: (fill) =>
-      Number.isInteger(fill) && (fill as number) >= low && (fill as number) <= high
+      isIntegerInRange(fill, low, high)
         ? []
         : simple(`expected an integer in [${low}, ${high}] for data type ${JSON.stringify(name)}`),
   };

@@ -7,6 +7,7 @@ reference implementation), kept in lockstep by a shared conformance corpus.
 
 ```ts
 import {
+  decodeStoreJson,
   validateMetadataV3,
   safeParseArrayMetadataV2,
   isEmptyTree,
@@ -15,7 +16,10 @@ import {
 
 // Validation produces a tree of errors mirroring the document's shape;
 // an empty tree means the document is valid.
-const errors = validateMetadataV3(JSON.parse(text));
+// decodeStoreJson is JSON.parse, but keeps integers beyond
+// Number.MAX_SAFE_INTEGER exact (as bigints) so int64/uint64 checks see
+// the value the document spells.
+const errors = validateMetadataV3(decodeStoreJson(text));
 if (!isEmptyTree(errors)) {
   errors.children.get("codecs"); // the subtree of codec problems
   flattenTree(errors); // the flat view, for diagnostics:
@@ -23,7 +27,7 @@ if (!isEmptyTree(errors)) {
 }
 
 // Or the discriminated-union form:
-const result = safeParseArrayMetadataV2(JSON.parse(zarrayText));
+const result = safeParseArrayMetadataV2(decodeStoreJson(zarrayText));
 if (result.success) {
   result.value.shape; // typed as ZarrV2ArrayMetadataJSON
 } else {
@@ -47,9 +51,9 @@ implemented by Zod, Valibot, and ArkType — so the validators plug directly
 into anything that accepts standard schemas (tRPC, form libraries, ...):
 
 ```ts
-import { metadataV3Schema, type StandardSchemaV1 } from "zarr-metadata";
+import { decodeStoreJson, metadataV3Schema, type StandardSchemaV1 } from "zarr-metadata";
 
-const result = await metadataV3Schema["~standard"].validate(JSON.parse(text));
+const result = await metadataV3Schema["~standard"].validate(decodeStoreJson(text));
 if (result.issues === undefined) {
   result.value; // ZarrV3ArrayMetadataJSON | ZarrV3GroupMetadataJSON
 }
@@ -89,7 +93,12 @@ raw-bits family, and the established zarr-extensions conventions —
 `string`, `bytes`, `numpy.datetime64`/`timedelta64`, and `struct` (whose
 fill is judged per field, recursively). `semantics.ts` is the
 document-walking orchestrator. Unrecognized names are skipped — the
-extension name space is open.
+extension name space is open. For v2, `validateSemanticsV2` /
+`validateArraySemanticsV2` interpret `.zarray` contents the same way:
+the `dtype` typestr grammar (byte order, kind, NumPy item size, datetime
+units, structured-dtype field rules) and the `fill_value` encoding the
+spec fixes per data type (`"NaN"`/`"Infinity"`/`"-Infinity"` for floats,
+base64 for byte strings and structured types, integer ranges).
 
 Consumers include the
 [Zarr Metadata VS Code extension](https://github.com/d-v-b/vscode-zarr).

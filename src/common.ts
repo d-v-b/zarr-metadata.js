@@ -7,10 +7,15 @@
  * corpus; see `conformance/` at the repository root.
  */
 
-/** A JSON-encodable value. */
+/**
+ * A JSON-encodable value. A `bigint` is a JSON integer too large to
+ * represent exactly as a `number` (beyond `Number.MAX_SAFE_INTEGER`), as
+ * produced by `decodeStoreJson`.
+ */
 export type JSONValue =
   | string
   | number
+  | bigint
   | boolean
   | null
   | JSONValue[]

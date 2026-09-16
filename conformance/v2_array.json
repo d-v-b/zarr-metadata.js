@@ -174,7 +174,7 @@
     ]
   },
   {
-    "description": "unexpected member in the closed v2 document",
+    "description": "extra member in the v2 array document is tolerated (spec: other keys SHOULD NOT be present and SHOULD be ignored)",
     "document": {
       "zarr_format": 2,
       "shape": [
@@ -190,14 +190,7 @@
       "filters": null,
       "node_type": "array"
     },
-    "problems": [
-      {
-        "loc": [
-          "node_type"
-        ],
-        "kind": "invalid_value"
-      }
-    ]
+    "problems": []
   },
   {
     "description": "invalid order and dimension_separator values",
@@ -259,7 +252,7 @@
     ]
   },
   {
-    "description": "empty filters list (null is the spelling for no filters)",
+    "description": "empty filters list is a list (spec: a list of codec configurations, or null; no minimum)",
     "document": {
       "zarr_format": 2,
       "shape": [
@@ -274,14 +267,7 @@
       "order": "C",
       "filters": []
     },
-    "problems": [
-      {
-        "loc": [
-          "filters"
-        ],
-        "kind": "invalid_value"
-      }
-    ]
+    "problems": []
   },
   {
     "description": "filters entry without a string id",
