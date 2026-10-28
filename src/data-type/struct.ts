@@ -1,5 +1,14 @@
-import { isPlainObject } from "../guards.js";
-import { issue, named, simple, type DataTypeDescriptor } from "./descriptor.js";
+import {
+  configured,
+  fillValueProblems,
+  field,
+  nestedAt,
+  storageOf,
+  type DataTypeDefinition,
+  type StorageClass,
+} from "../definition.js";
+import type { PathedIssue } from "../errors.js";
+import { issue, json, mappingOf, objectOf, required, sequenceOf, show, string } from "../typed.js";
 
 /** One field of a `struct` data type; `data_type` recurses (structs may nest). */
 export interface StructField {
@@ -13,43 +22,82 @@ export interface StructConfiguration {
 }
 
 /**
- * The zarr-extensions `struct` data type (heterogeneous record). Its fill
- * value is a JSON object mapping every field name to that field's fill
- * value, each judged recursively against the field's own data type.
+ * The zarr-extensions `struct` data type (a record of named fields). Each
+ * field's data type is a nested field, read in the same scope. There is at
+ * least one field; names are non-empty and distinct, since a fill value
+ * addresses fields by name; and no field type varies in size ("Variable-
+ * length data types MUST NOT be used as field types"). The fill value is
+ * an object with an entry for every field and nothing else, each judged
+ * against its field's own type.
  */
-export const struct: DataTypeDescriptor = {
-  matches: named("struct"),
-  requiredConfigKeys: ["fields"],
-  fillIssues: (fill, _name, context) => {
-    if (!isPlainObject(fill)) {
-      return simple('expected an object mapping field names to fill values for data type "struct"');
+export const struct: DataTypeDefinition<StructConfiguration, Record<string, unknown>> = {
+  name: "struct",
+  ...configured({
+    fields: required(
+      sequenceOf(objectOf({ name: required(string), data_type: required(field("data_type")) })),
+    ),
+  }),
+  rules: ({ fields }, nested) => {
+    const issues: PathedIssue[] = [];
+    if (fields.length === 0) {
+      issues.push(issue(["fields"], "expected at least one struct field", "invalid_value"));
     }
-    const fields = context.configuration?.["fields"];
-    if (!Array.isArray(fields)) return []; // config shape is the schema layer's problem
-    const declared = new Map<string, unknown>();
-    for (const field of fields) {
-      if (isPlainObject(field) && typeof field["name"] === "string") {
-        declared.set(field["name"], field["data_type"]);
+    const seen = new Map<string, number>();
+    fields.forEach((member, index) => {
+      if (member.name === "") {
+        issues.push(issue(["fields", index, "name"], "expected a non-empty field name", "invalid_value"));
       }
-    }
-    if (declared.size !== fields.length) return []; // malformed fields: schema layer's problem
-    const issues = [];
-    for (const [fieldName, dataType] of declared) {
-      if (!Object.hasOwn(fill, fieldName)) {
-        issues.push(issue([fieldName], "missing required key", "missing_key"));
-        continue;
+      const first = seen.get(member.name);
+      if (first === undefined) {
+        seen.set(member.name, index);
+      } else {
+        issues.push(
+          issue(
+            ["fields", index, "name"],
+            `duplicate field name ${show(member.name)}, already used by field ${first}`,
+            "invalid_value",
+          ),
+        );
       }
-      issues.push(
-        ...context
-          .fillIssuesFor(dataType, fill[fieldName], context.depth + 1)
-          .map((inner) => ({ ...inner, path: [fieldName, ...inner.path] })),
-      );
-    }
-    for (const key of Object.keys(fill)) {
-      if (!declared.has(key)) {
-        issues.push(issue([key], "unexpected member (no such struct field)"));
+      const fieldType = nestedAt(nested, "fields", index, "data_type");
+      if (storageOf(fieldType) === "variable_length") {
+        issues.push(
+          issue(
+            ["fields", index, "data_type"],
+            `expected a data type of fixed size, got ${show(fieldType?.name)}, whose values vary in size`,
+            "invalid_value",
+          ),
+        );
       }
+    });
+    return issues;
+  },
+  fillValue: mappingOf(json),
+  fillValueRules: ({ fields }, nested, value) => {
+    const issues: PathedIssue[] = [];
+    const declared = new Set(fields.map((member) => member.name));
+    fields.forEach((member, index) => {
+      if (!Object.hasOwn(value, member.name)) {
+        issues.push(
+          issue([member.name], `expected a fill value for struct field ${show(member.name)}`, "missing_key"),
+        );
+        return;
+      }
+      const fieldType = nestedAt(nested, "fields", index, "data_type");
+      issues.push(...fillValueProblems(fieldType, value[member.name], [member.name]));
+    });
+    for (const key of Object.keys(value)) {
+      if (!declared.has(key)) issues.push(issue([key], `no struct field is named ${show(key)}`, "unknown_key"));
     }
     return issues;
+  },
+  // The packed field values: multi-byte if any field holds multi-byte
+  // numbers, single-byte if every field is single-byte, else unknown.
+  storage: ({ fields }, nested) => {
+    const found = new Set<StorageClass | undefined>(
+      fields.map((_member, index) => storageOf(nestedAt(nested, "fields", index, "data_type"))),
+    );
+    if (found.has("multi_byte")) return "multi_byte";
+    return found.size === 1 && found.has("single_byte") ? "single_byte" : undefined;
   },
 };

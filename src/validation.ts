@@ -620,7 +620,12 @@ function arrayMetadataV3Problems(value: unknown): PathedIssue[] {
       problems.push(
         problem(["dimension_names"], "expected an array of strings or null", "invalid_type"),
       );
-    } else if (isIntSequence(doc["shape"]) && names.length !== doc["shape"].length) {
+    } else if (
+      // A shape with its own problem gives no number of dimensions to compare.
+      isIntSequence(doc["shape"]) &&
+      validateDimSequence(doc, "shape").length === 0 &&
+      names.length !== doc["shape"].length
+    ) {
       problems.push(
         problem(["dimension_names"], "expected one name per dimension of shape", "invalid_value"),
       );

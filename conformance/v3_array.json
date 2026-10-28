@@ -1135,5 +1135,3900 @@
         "kind": "invalid_type"
       }
     ]
+  },
+  {
+    "description": "dimension_names length check is skipped when shape has a negative length",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        10,
+        20,
+        -1
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            5,
+            5
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ],
+      "dimension_names": [
+        "x"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "shape"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: valid fill values of the core data types (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "int8",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": -128,
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "semantics: valid fill values of the core data types (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float32",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": "-Infinity",
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "semantics: valid fill values of the core data types (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "complex64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": [
+        "0x7fc00000",
+        1.5
+      ],
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "semantics: fill value of the wrong JSON type for its data type",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "uint16",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": true,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "semantics: integer fill value outside the data type's range",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "int8",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 128,
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: float hex fill value of another width",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": "0x7fc00000",
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: complex fill value with a bad component",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "complex128",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": [
+        0,
+        "0x7e00"
+      ],
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value",
+          1
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: complex fill value that is not a pair",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "complex64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": [
+        0
+      ],
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "semantics: bool fill value that is a number",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "bool",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "semantics: raw-bits size that is not a multiple of 8",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "r12",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": [
+        0,
+        0
+      ],
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "data_type"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: raw-bits fill value with the wrong number of bytes and a byte out of range (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "r16",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": [
+        0
+      ],
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: raw-bits fill value with the wrong number of bytes and a byte out of range (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "r8",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": [
+        256
+      ],
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value",
+          0
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: data type configuration with an undeclared key",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": {
+        "name": "float64",
+        "configuration": {
+          "x": 1
+        }
+      },
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "data_type",
+          "configuration",
+          "x"
+        ],
+        "kind": "unknown_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: numpy.datetime64 without its configuration, and with bad members (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "numpy.datetime64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": "NaT",
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "data_type",
+          "configuration"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: numpy.datetime64 without its configuration, and with bad members (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": {
+        "name": "numpy.datetime64",
+        "configuration": {
+          "unit": "fortnight",
+          "scale_factor": 0
+        }
+      },
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": "NaT",
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "data_type",
+          "configuration",
+          "unit"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "data_type",
+          "configuration",
+          "scale_factor"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: numpy.datetime64 fill values: a string other than NaT, and a non-integer (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": {
+        "name": "numpy.timedelta64",
+        "configuration": {
+          "unit": "s",
+          "scale_factor": 1
+        }
+      },
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": "nat",
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: numpy.datetime64 fill values: a string other than NaT, and a non-integer (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": {
+        "name": "numpy.timedelta64",
+        "configuration": {
+          "unit": "s",
+          "scale_factor": 1
+        }
+      },
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 1.5,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "semantics: string and bytes fill values (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "string",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "vlen-utf8"
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "semantics: string and bytes fill values (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "bytes",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": "AAA",
+      "codecs": [
+        {
+          "name": "vlen-bytes"
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: string and bytes fill values (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "bytes",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": [
+        0,
+        256
+      ],
+      "codecs": [
+        {
+          "name": "vlen-bytes"
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value",
+          1
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: struct fill value judged field by field",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": {
+        "name": "struct",
+        "configuration": {
+          "fields": [
+            {
+              "name": "a",
+              "data_type": "uint8"
+            },
+            {
+              "name": "b",
+              "data_type": {
+                "name": "struct",
+                "configuration": {
+                  "fields": [
+                    {
+                      "name": "c",
+                      "data_type": "int8"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "d",
+              "data_type": "bool"
+            }
+          ]
+        }
+      },
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": {
+        "a": 1,
+        "b": {
+          "c": 300
+        },
+        "e": 0
+      },
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "fill_value",
+          "b",
+          "c"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "fill_value",
+          "d"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "fill_value",
+          "e"
+        ],
+        "kind": "unknown_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: struct fields that are empty, unnamed, duplicated, or of variable size (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": {
+        "name": "struct",
+        "configuration": {
+          "fields": []
+        }
+      },
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": {},
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "data_type",
+          "configuration",
+          "fields"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: struct fields that are empty, unnamed, duplicated, or of variable size (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": {
+        "name": "struct",
+        "configuration": {
+          "fields": [
+            {
+              "name": "",
+              "data_type": "int8"
+            },
+            {
+              "name": "a",
+              "data_type": "int8"
+            },
+            {
+              "name": "a",
+              "data_type": "int8"
+            },
+            {
+              "name": "s",
+              "data_type": "string"
+            }
+          ]
+        }
+      },
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": {},
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "data_type",
+          "configuration",
+          "fields",
+          0,
+          "name"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "data_type",
+          "configuration",
+          "fields",
+          2,
+          "name"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "data_type",
+          "configuration",
+          "fields",
+          3,
+          "data_type"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: struct of single-byte fields needs no endian; one multi-byte field does (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": {
+        "name": "struct",
+        "configuration": {
+          "fields": [
+            {
+              "name": "a",
+              "data_type": "uint8"
+            }
+          ]
+        }
+      },
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": {
+        "a": 0
+      },
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "semantics: struct of single-byte fields needs no endian; one multi-byte field does (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": {
+        "name": "struct",
+        "configuration": {
+          "fields": [
+            {
+              "name": "a",
+              "data_type": "uint8"
+            },
+            {
+              "name": "b",
+              "data_type": "float32"
+            }
+          ]
+        }
+      },
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": {
+        "a": 0,
+        "b": 0
+      },
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "endian"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: a struct field type nested in a configuration has its envelope checked",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": {
+        "name": "struct",
+        "configuration": {
+          "fields": [
+            {
+              "name": "a",
+              "data_type": {
+                "name": "int8",
+                "must_understand": false
+              }
+            }
+          ]
+        }
+      },
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": {
+        "a": 0
+      },
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "data_type",
+          "configuration",
+          "fields",
+          0,
+          "data_type",
+          "must_understand"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: an unclaimed data type leaves its fill value and the bytes codec unjudged",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "my.custom.dtype",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": {
+        "anything": true
+      },
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "semantics: regular grid without a configuration, with an undeclared key, and with a chunk length of 0 (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": "regular",
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "chunk_grid",
+          "configuration"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: regular grid without a configuration, with an undeclared key, and with a chunk length of 0 (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ],
+          "x": 1
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "chunk_grid",
+          "configuration",
+          "x"
+        ],
+        "kind": "unknown_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: regular grid without a configuration, with an undeclared key, and with a chunk length of 0 (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        0,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            0,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "chunk_grid",
+          "configuration",
+          "chunk_shape",
+          0
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: regular chunk_shape with another number of dimensions than shape",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "chunk_grid",
+          "configuration",
+          "chunk_shape"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: rectilinear grid: arity, coverage, overflow, and entry shapes (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "rectilinear",
+        "configuration": {
+          "kind": "inline",
+          "chunk_shapes": [
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "chunk_grid",
+          "configuration",
+          "chunk_shapes"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: rectilinear grid: arity, coverage, overflow, and entry shapes (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "rectilinear",
+        "configuration": {
+          "kind": "inline",
+          "chunk_shapes": [
+            [
+              6,
+              5
+            ],
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "chunk_grid",
+          "configuration",
+          "chunk_shapes",
+          0
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: rectilinear grid: arity, coverage, overflow, and entry shapes (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "rectilinear",
+        "configuration": {
+          "kind": "inline",
+          "chunk_shapes": [
+            [
+              6,
+              6,
+              6
+            ],
+            [
+              [
+                4,
+                2
+              ],
+              4,
+              4
+            ]
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "semantics: rectilinear grid: arity, coverage, overflow, and entry shapes (4)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "rectilinear",
+        "configuration": {
+          "kind": "file",
+          "chunk_shapes": [
+            [
+              0,
+              12
+            ],
+            [
+              [
+                6,
+                2,
+                1
+              ]
+            ]
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "chunk_grid",
+          "configuration",
+          "kind"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "chunk_grid",
+          "configuration",
+          "chunk_shapes",
+          0,
+          0
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "chunk_grid",
+          "configuration",
+          "chunk_shapes",
+          1,
+          0
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "semantics: chunk key encoding separators (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": {
+        "name": "v2",
+        "configuration": {
+          "separator": "/"
+        }
+      },
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "semantics: chunk key encoding separators (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": {
+        "name": "default",
+        "configuration": {
+          "separator": "-"
+        }
+      },
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "chunk_key_encoding",
+          "configuration",
+          "separator"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: chunk key encoding separators (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": {
+        "name": "default",
+        "configuration": {
+          "separator": 5
+        }
+      },
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "chunk_key_encoding",
+          "configuration",
+          "separator"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "semantics: codec configurations: gzip, blosc, zstd, crc32c (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        },
+        "gzip"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          1,
+          "configuration"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: codec configurations: gzip, blosc, zstd, crc32c (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        },
+        {
+          "name": "gzip",
+          "configuration": {
+            "level": 10
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          1,
+          "configuration",
+          "level"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: codec configurations: gzip, blosc, zstd, crc32c (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        },
+        {
+          "name": "blosc",
+          "configuration": {
+            "cname": "lz4",
+            "clevel": 5,
+            "shuffle": "shuffle",
+            "blocksize": 0
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          1,
+          "configuration",
+          "typesize"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: codec configurations: gzip, blosc, zstd, crc32c (4)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        },
+        {
+          "name": "blosc",
+          "configuration": {
+            "cname": "lz5",
+            "clevel": 5,
+            "shuffle": "bitshuffle",
+            "typesize": 0,
+            "blocksize": -1
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          1,
+          "configuration",
+          "cname"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "codecs",
+          1,
+          "configuration",
+          "blocksize"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: codec configurations: gzip, blosc, zstd, crc32c (5)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        },
+        {
+          "name": "zstd",
+          "configuration": {
+            "level": 23,
+            "checksum": "yes"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          1,
+          "configuration",
+          "level"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "codecs",
+          1,
+          "configuration",
+          "checksum"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "semantics: codec configurations: gzip, blosc, zstd, crc32c (6)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        },
+        {
+          "name": "crc32c",
+          "configuration": {
+            "x": 1
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          1,
+          "configuration",
+          "x"
+        ],
+        "kind": "unknown_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: pipeline order: none, two, and misplaced array -> bytes codecs (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "gzip",
+          "configuration": {
+            "level": 1
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: pipeline order: none, two, and misplaced array -> bytes codecs (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        },
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          1
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: pipeline order: none, two, and misplaced array -> bytes codecs (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "gzip",
+          "configuration": {
+            "level": 1
+          }
+        },
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        },
+        {
+          "name": "transpose",
+          "configuration": {
+            "order": [
+              1,
+              0
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          1
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "codecs",
+          2
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: an unclaimed codec is not ordered, and hands on an unknown chunk (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "mystery"
+        }
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "semantics: an unclaimed codec is not ordered, and hands on an unknown chunk (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "mystery"
+        },
+        "bytes",
+        {
+          "name": "transpose",
+          "configuration": {
+            "order": [
+              0
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          2
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: bytes codec without an endian, with a bad endian, and for values that vary in size (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "endian"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: bytes codec without an endian, with a bad endian, and for values that vary in size (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "middle"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "endian"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: bytes codec without an endian, with a bad endian, and for values that vary in size (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "string",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": "",
+      "codecs": [
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: transpose order that is no permutation, or of another rank (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "transpose",
+          "configuration": {
+            "order": [
+              0,
+              2
+            ]
+          }
+        },
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "order"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: transpose order that is no permutation, or of another rank (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "transpose",
+          "configuration": {
+            "order": [
+              2,
+              1,
+              0
+            ]
+          }
+        },
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "order"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: transpose order that is no permutation, or of another rank (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        "transpose",
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: sharding: arity, divisibility per axis, and an inner chunk length of 0 (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              3
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "chunk_shape"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: sharding: arity, divisibility per axis, and an inner chunk length of 0 (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              4,
+              5
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "chunk_shape",
+          0
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "chunk_shape",
+          1
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: sharding: arity, divisibility per axis, and an inner chunk length of 0 (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              0,
+              3
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "chunk_shape",
+          0
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: a transposed shard is divided along its transposed axes (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        8,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            4,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "transpose",
+          "configuration": {
+            "order": [
+              1,
+              0
+            ]
+          }
+        },
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              3,
+              4
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "semantics: a transposed shard is divided along its transposed axes (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        8,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            4,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "transpose",
+          "configuration": {
+            "order": [
+              1,
+              0
+            ]
+          }
+        },
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              4,
+              3
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          1,
+          "configuration",
+          "chunk_shape",
+          0
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "codecs",
+          1,
+          "configuration",
+          "chunk_shape",
+          1
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: a shard divides every chunk length of a rectilinear grid (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "rectilinear",
+        "configuration": {
+          "kind": "inline",
+          "chunk_shapes": [
+            [
+              4,
+              8
+            ],
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              4,
+              3
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "semantics: a shard divides every chunk length of a rectilinear grid (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "rectilinear",
+        "configuration": {
+          "kind": "inline",
+          "chunk_shapes": [
+            [
+              4,
+              8
+            ],
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              8,
+              3
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "chunk_shape",
+          0
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: a shard's pipelines: dynamic index codecs, index endian, empty and nested pipelines (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              3,
+              3
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              {
+                "name": "gzip",
+                "configuration": {
+                  "level": 1
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "index_codecs",
+          1
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: a shard's pipelines: dynamic index codecs, index endian, empty and nested pipelines (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              3,
+              3
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
+            ],
+            "index_codecs": [
+              "bytes"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "index_codecs",
+          0,
+          "configuration",
+          "endian"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: a shard's pipelines: dynamic index codecs, index endian, empty and nested pipelines (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              3,
+              3
+            ],
+            "codecs": [],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "codecs"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: a shard's pipelines: dynamic index codecs, index endian, empty and nested pipelines (4)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              3,
+              3
+            ],
+            "codecs": [
+              {
+                "name": "sharding_indexed",
+                "configuration": {
+                  "chunk_shape": [
+                    2,
+                    3
+                  ],
+                  "codecs": [
+                    {
+                      "name": "bytes",
+                      "configuration": {
+                        "endian": "little"
+                      }
+                    }
+                  ],
+                  "index_codecs": [
+                    {
+                      "name": "bytes",
+                      "configuration": {
+                        "endian": "little"
+                      }
+                    },
+                    "crc32c"
+                  ]
+                }
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "codecs",
+          0,
+          "configuration",
+          "chunk_shape",
+          0
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: a shard's pipelines: dynamic index codecs, index endian, empty and nested pipelines (5)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              3,
+              3
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                },
+                "must_understand": false
+              },
+              {
+                "name": "Bad"
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "codecs",
+          0,
+          "must_understand"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "codecs",
+          1,
+          "name"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: sharding without its configuration, and with an undeclared key (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        "sharding_indexed"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "semantics: sharding without its configuration, and with an undeclared key (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              3,
+              3
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ],
+            "index_location": "middle",
+            "x": 1
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "x"
+        ],
+        "kind": "unknown_key"
+      },
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "index_location"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: cast_value target and source data types (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "cast_value",
+          "configuration": {
+            "data_type": "complex64"
+          }
+        },
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "data_type"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: cast_value target and source data types (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "cast_value",
+          "configuration": {
+            "data_type": "float32",
+            "out_of_range": "wrap"
+          }
+        },
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "out_of_range"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: cast_value target and source data types (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "bool",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": false,
+      "codecs": [
+        {
+          "name": "cast_value",
+          "configuration": {
+            "data_type": "uint8"
+          }
+        },
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: cast_value target and source data types (4)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "cast_value",
+          "configuration": {
+            "data_type": "uint8"
+          }
+        },
+        "bytes"
+      ]
+    },
+    "problems": []
+  },
+  {
+    "description": "semantics: cast_value scalar maps are fill values of each side (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "cast_value",
+          "configuration": {
+            "data_type": "uint8",
+            "scalar_map": {
+              "encode": [
+                [
+                  0,
+                  300
+                ]
+              ]
+            }
+          }
+        },
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "scalar_map",
+          "encode",
+          0,
+          1
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: cast_value scalar maps are fill values of each side (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "cast_value",
+          "configuration": {
+            "data_type": "uint8",
+            "scalar_map": {
+              "decode": [
+                [
+                  0,
+                  "x"
+                ]
+              ],
+              "encode": [
+                [
+                  "NaN",
+                  0,
+                  1
+                ]
+              ]
+            }
+          }
+        },
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "scalar_map",
+          "encode",
+          0
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "semantics: scale_offset scalars and input data type (1)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "scale_offset",
+          "configuration": {
+            "scale": null
+          }
+        },
+        {
+          "name": "bytes",
+          "configuration": {
+            "endian": "little"
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "scale"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: scale_offset scalars and input data type (2)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "bool",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": false,
+      "codecs": [
+        "scale_offset",
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: scale_offset scalars and input data type (3)",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        12
+      ],
+      "data_type": "int8",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "scale_offset",
+          "configuration": {
+            "offset": 1.5,
+            "scale": 300
+          }
+        },
+        "bytes"
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "offset"
+        ],
+        "kind": "invalid_type"
+      },
+      {
+        "loc": [
+          "codecs",
+          0,
+          "configuration",
+          "scale"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "semantics: a shape with its own problem gives the grid and codecs no dimensions",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "array",
+      "shape": [
+        12,
+        -1
+      ],
+      "data_type": "float64",
+      "chunk_grid": {
+        "name": "regular",
+        "configuration": {
+          "chunk_shape": [
+            6,
+            6
+          ]
+        }
+      },
+      "chunk_key_encoding": "default",
+      "fill_value": 0,
+      "codecs": [
+        {
+          "name": "sharding_indexed",
+          "configuration": {
+            "chunk_shape": [
+              5,
+              5
+            ],
+            "codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
+            ],
+            "index_codecs": [
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              },
+              "crc32c"
+            ]
+          }
+        }
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "shape"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
   }
 ]

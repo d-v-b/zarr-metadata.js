@@ -1,42 +1,30 @@
-/** The core `regular` chunk grid: syntax and semantics. */
-import type { PathedIssue } from "../errors.js";
-import { configurationMissing, fieldParts, isIntArray } from "../guards.js";
-import type { ChunkGridVerdict } from "./index.js";
+/** The core `regular` chunk grid. */
+import { configured, type ChunkGridDefinition } from "../definition.js";
+import { integerIn, issue, required, sequenceOf } from "../typed.js";
 
 /** Configuration of the core `regular` chunk grid. */
 export interface RegularChunkGridConfiguration {
   chunk_shape: number[];
 }
 
-export function regularIssues(rawGrid: unknown, shape: number[] | undefined): ChunkGridVerdict {
-  const issues: PathedIssue[] = [];
-  let chunkSizes: number[][] | undefined;
-  const configuration = fieldParts(rawGrid)?.configuration;
-  if (configurationMissing(rawGrid)) {
-    issues.push({
-      path: [],
-      message: '"regular" requires a configuration with "chunk_shape"',
-      kind: "missing_key",
-    });
-  } else if (configuration !== undefined && !Object.hasOwn(configuration, "chunk_shape")) {
-    issues.push({
-      path: ["configuration", "chunk_shape"],
-      message: "missing required key",
-      kind: "missing_key",
-    });
-  }
-  const configured = configuration?.["chunk_shape"];
-  if (isIntArray(configured)) {
-    if (shape !== undefined && configured.length !== shape.length) {
-      issues.push({
-        path: ["configuration", "chunk_shape"],
-        message: `expected one length per dimension of shape (${shape.length})`,
-        kind: "invalid_value",
-      });
-      // wrong arity: unusable as division context
-    } else {
-      chunkSizes = configured.map((length) => [length]);
-    }
-  }
-  return { issues, chunkSizes };
-}
+/**
+ * Every chunk length is at least 1, even along a dimension of length 0
+ * ("Chunk sizes must be greater than zero"), and there is one per
+ * dimension of the array. Every chunk, the edge ones included, has the
+ * grid's `chunk_shape`.
+ */
+export const regular: ChunkGridDefinition<RegularChunkGridConfiguration> = {
+  name: "regular",
+  ...configured({ chunk_shape: required(sequenceOf(integerIn({ ge: 1 }))) }),
+  shapeRules: ({ chunk_shape }, _nested, shape) =>
+    chunk_shape.length === shape.length
+      ? []
+      : [
+          issue(
+            ["chunk_shape"],
+            `expected one chunk length per dimension of shape, got ${chunk_shape.length}`,
+            "invalid_value",
+          ),
+        ],
+  chunkLengths: ({ chunk_shape }) => chunk_shape.map((length) => [length]),
+};
