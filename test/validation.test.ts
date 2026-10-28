@@ -224,6 +224,13 @@ describe("validateConsolidatedDocumentsV2", () => {
     ]);
   });
 
+  it("leaves a .zattrs with no sibling node unchecked, as the reference does", async () => {
+    const { validateConsolidatedDocumentsV2 } = await import("../src/index.js");
+    expect(
+      flattenTree(validateConsolidatedDocumentsV2({ zarr_consolidated_format: 1, metadata: { "a/.zattrs": 5 } })),
+    ).toEqual([]);
+  });
+
   it("rejects an attributes member inside on-disk .zarray and .zgroup entries", async () => {
     const { validateConsolidatedDocumentsV2 } = await import("../src/index.js");
     const issues = flattenTree(
