@@ -76,9 +76,13 @@ def problems_of(reading: object, *, v2: bool = False) -> list[tuple[Loc, str]]:
 
 
 def _relocated(loc: Loc) -> Loc:
-    # A .zmetadata entry nests a whole .zarray, so its dtype sits two levels down.
-    if len(loc) >= 3 and loc[0] == "metadata" and loc[2] == "dtype":
-        return (*loc[:2], *v2_dtype_loc(loc[2:]))
+    # A .zmetadata entry nests a whole .zarray, so its dtype sits two levels
+    # down. Any other entry (a .zattrs with a user key "dtype") is left alone.
+    if len(loc) >= 3 and loc[0] == "metadata":
+        entry = loc[1]
+        if isinstance(entry, str) and entry.endswith(".zarray") and loc[2] == "dtype":
+            return (*loc[:2], *v2_dtype_loc(loc[2:]))
+        return loc
     return v2_dtype_loc(loc)
 
 
