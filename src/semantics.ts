@@ -31,7 +31,7 @@ import {
   type ResolvedField,
   type Scope,
 } from "./definition.js";
-import { flattenTree, treeOf, type ErrorTree, type PathedIssue } from "./errors.js";
+import { append, flattenTree, treeOf, type ErrorTree, type PathedIssue } from "./errors.js";
 import { isIntArray, isPlainObject } from "./guards.js";
 import { isJson, validateGroupMetadataV3 } from "./validation.js";
 
@@ -65,10 +65,10 @@ function arraySemanticsIssues(doc: Record<string, unknown>): PathedIssue[] {
     if (!has(key) || !isJson(doc[key])) continue;
     const result = readField(doc[key], kind, [key], SCOPE);
     read[key] = result.field;
-    issues.push(...result.issues);
+    append(issues, result.issues);
   }
   if (has("fill_value") && isJson(doc["fill_value"]) && read["data_type"] !== undefined) {
-    issues.push(...fillValueProblems(read["data_type"], doc["fill_value"], ["fill_value"]));
+    append(issues, fillValueProblems(read["data_type"], doc["fill_value"], ["fill_value"]));
   }
   // The grid gives the chunk lengths the first codec receives: one entry
   // per dimension, undefined where unknown.
@@ -77,7 +77,7 @@ function arraySemanticsIssues(doc: Record<string, unknown>): PathedIssue[] {
   if (grid !== undefined && shape !== undefined) {
     const result = chunkGridLengths(grid, shape, ["chunk_grid"]);
     lengths = result.lengths;
-    issues.push(...result.issues);
+    append(issues, result.issues);
   }
   const codecs = doc["codecs"];
   if (Array.isArray(codecs)) {
@@ -86,11 +86,12 @@ function arraySemanticsIssues(doc: Record<string, unknown>): PathedIssue[] {
         return { status: "refused", json: entry, name: undefined, definition: undefined, nested: new Map() };
       }
       const result = readField(entry, "codec", ["codecs", index], SCOPE);
-      issues.push(...result.issues);
+      append(issues, result.issues);
       return result.field;
     });
-    issues.push(
-      ...pipelineProblems(fields, { lengths, dataType: read["data_type"] }, ["codecs"], { checkEmpty: false }),
+    append(
+      issues,
+      pipelineProblems(fields, { lengths, dataType: read["data_type"] }, ["codecs"], { checkEmpty: false }),
     );
   }
   return issues;
@@ -125,14 +126,15 @@ function consolidatedSemanticsIssues(value: unknown, depth: number): PathedIssue
   for (const [key, entry] of Object.entries(entries)) {
     if (!isPlainObject(entry)) continue;
     if (entry["node_type"] === "array") {
-      issues.push(...prefixed(["metadata", key], arraySemanticsIssues(entry)));
+      append(issues, prefixed(["metadata", key], arraySemanticsIssues(entry)));
     } else if (
       entry["node_type"] === "group" &&
       Object.hasOwn(entry, "consolidated_metadata") &&
       flattenTree(validateGroupMetadataV3(entry)).length === 0
     ) {
-      issues.push(
-        ...prefixed(
+      append(
+        issues,
+        prefixed(
           ["metadata", key, "consolidated_metadata"],
           consolidatedSemanticsIssues(entry["consolidated_metadata"], depth + 1),
         ),

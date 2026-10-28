@@ -6,7 +6,7 @@ import {
   nestedAt,
   type CodecDefinition,
 } from "../definition.js";
-import type { PathedIssue } from "../errors.js";
+import { append, type PathedIssue } from "../errors.js";
 import { fixedTuple, issue, json, objectOf, oneOf, optional, required, sequenceOf, show } from "../typed.js";
 import { COMPLEX, FLOATING_POINT, NOT_NUMBERS } from "./arithmetic.js";
 
@@ -81,7 +81,7 @@ export const castValue: CodecDefinition<CastValueCodecConfiguration> = {
       );
     }
     for (const { path, value } of scalars(configuration, "target")) {
-      issues.push(...fillValueProblems(target, value, path));
+      append(issues, fillValueProblems(target, value, path));
     }
     return issues;
   },

@@ -14,7 +14,7 @@
  *
  * The input is JSON already (the structural layer reports anything else).
  */
-import type { IssueKind, IssuePath, PathedIssue } from "./errors.js";
+import { append, type IssueKind, type IssuePath, type PathedIssue } from "./errors.js";
 
 /** A checked value: the value as typed (closed objects lose undeclared keys), and every problem. */
 export interface Parsed {
@@ -111,7 +111,7 @@ export function sequenceOf(element: Parser): Parser {
     value.forEach((entry, index) => {
       const parsed = element(entry, [...path, index]);
       typed.push(parsed.value);
-      issues.push(...parsed.issues);
+      append(issues, parsed.issues);
     });
     return { value: typed, issues };
   };
@@ -128,7 +128,7 @@ export function fixedTuple(elements: ReadonlyArray<Parser>, description: string)
     elements.forEach((element, position) => {
       const parsed = element(value[position], [...path, position]);
       typed.push(parsed.value);
-      issues.push(...parsed.issues);
+      append(issues, parsed.issues);
     });
     return { value: typed, issues };
   };
@@ -221,13 +221,13 @@ export function objectOf(members: Readonly<Record<string, Member>>, extra?: Pars
       }
       const parsed = extra(entry, [...path, key]);
       defineOwn(typed, key, parsed.value);
-      issues.push(...parsed.issues);
+      append(issues, parsed.issues);
     }
     for (const [key, member] of Object.entries(members)) {
       if (Object.hasOwn(value, key)) {
         const parsed = member.parse(value[key], [...path, key]);
         defineOwn(typed, key, parsed.value);
-        issues.push(...parsed.issues);
+        append(issues, parsed.issues);
       } else if (member.required) {
         issues.push(issue([...path, key], `missing required key ${show(key)}`, "missing_key"));
       }
@@ -257,7 +257,7 @@ export function mappingOf(entry: Parser): Parser {
     for (const [key, item] of Object.entries(value)) {
       const parsed = entry(item, [...path, key]);
       defineOwn(typed, key, parsed.value);
-      issues.push(...parsed.issues);
+      append(issues, parsed.issues);
     }
     return { value: typed, issues };
   };

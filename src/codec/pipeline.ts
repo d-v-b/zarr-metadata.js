@@ -22,7 +22,7 @@ import {
   type CodecKind,
   type ResolvedField,
 } from "../definition.js";
-import type { IssuePath, PathedIssue } from "../errors.js";
+import { append, type IssuePath, type PathedIssue } from "../errors.js";
 import { issue, show } from "../typed.js";
 
 const POSITIONS: Record<CodecKind, number> = { array_array: 0, array_bytes: 1, bytes_bytes: 2 };
@@ -94,14 +94,14 @@ export function pipelineProblems(
     const at = [...path, index, "configuration"];
     if (codec.status === "accepted") {
       const { configuration, nested } = codec;
-      issues.push(...prefixed(at, definition.chunkRules?.(configuration, nested, incoming) ?? []));
+      append(issues, prefixed(at, definition.chunkRules?.(configuration, nested, incoming) ?? []));
       for (const [member, received] of Object.entries(
         definition.pipelines?.(configuration, nested, incoming) ?? {},
       )) {
         const held = (configuration[member] as unknown[]).map(
           (_entry, position) => nestedAt(nested, member, position) as ResolvedField,
         );
-        issues.push(...pipelineProblems(held, received, [...at, member], { checkEmpty: true }));
+        append(issues, pipelineProblems(held, received, [...at, member], { checkEmpty: true }));
       }
     }
     if (definition.kind === "array_bytes") {

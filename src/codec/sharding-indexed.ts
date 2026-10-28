@@ -79,7 +79,7 @@ export const shardingIndexed: CodecDefinition<ShardingIndexedCodecConfiguration>
           issue(
             ["chunk_shape", axis],
             "expected an inner chunk length that divides each length the shards take along this axis, " +
-              `got ${inner}, which does not divide ${Math.min(...undivided)}`,
+              `got ${inner}, which does not divide ${undivided.reduce((low, length) => Math.min(low, length))}`,
             "invalid_value",
           ),
         );

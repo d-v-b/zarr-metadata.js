@@ -48,6 +48,7 @@
 
 import type { JSONValue, ZarrV3MetadataFieldJSON } from "./common.js";
 import {
+  append,
   MetadataValidationError,
   treeOf,
   type ErrorTree,
@@ -184,7 +185,7 @@ function validateJsonAtDepth(value: unknown, depth: number, finite: boolean): Pa
       ];
     }
     value.forEach((item, index) => {
-      problems.push(...prefix(index, validateJsonAtDepth(item, depth + 1, finite)));
+      append(problems, prefix(index, validateJsonAtDepth(item, depth + 1, finite)));
     });
     return problems;
   }
@@ -193,7 +194,7 @@ function validateJsonAtDepth(value: unknown, depth: number, finite: boolean): Pa
       return [problem([], `maximum nesting depth of ${MAX_JSON_DEPTH} exceeded`, "invalid_value")];
     }
     for (const [key, item] of Object.entries(value)) {
-      problems.push(...prefix(key, validateJsonAtDepth(item, depth + 1, finite)));
+      append(problems, prefix(key, validateJsonAtDepth(item, depth + 1, finite)));
     }
     return problems;
   }
@@ -297,7 +298,7 @@ function validateExtensionFieldsV3(
   const problems: PathedIssue[] = [];
   for (const [key, value] of Object.entries(doc)) {
     if (reserved.has(key)) continue;
-    problems.push(...prefix(key, userDataProblems(value)));
+    append(problems, prefix(key, userDataProblems(value)));
   }
   return problems;
 }
@@ -332,7 +333,7 @@ function metadataFieldV3Problems(
   } else if (typeof value["name"] !== "string") {
     problems.push(problem(["name"], "expected a string name", "invalid_type"));
   } else {
-    problems.push(...nameProblems(value["name"], ["name"]));
+    append(problems, nameProblems(value["name"], ["name"]));
   }
   if (has(value, "configuration")) {
     const configuration = value["configuration"];
@@ -340,7 +341,7 @@ function metadataFieldV3Problems(
       problems.push(problem(["configuration"], "expected an object", "invalid_type"));
     } else {
       for (const [key, item] of Object.entries(configuration)) {
-        problems.push(...prefix("configuration", prefix(key, jsonProblems(item))));
+        append(problems, prefix("configuration", prefix(key, jsonProblems(item))));
       }
     }
   }
@@ -450,7 +451,7 @@ function dtypeV2Problems(value: unknown, depth = 0): PathedIssue[] {
   value.forEach((record, index) => {
     const read = fieldRecordV2Problems(record, depth);
     if (read.own.length > 0 || !read.named) sound = false;
-    problems.push(...prefix(index, [...read.own, ...read.nested]));
+    append(problems, prefix(index, [...read.own, ...read.nested]));
   });
   if (sound) {
     const seen = new Map<string, number>();
@@ -560,7 +561,7 @@ function validateAttributes(value: unknown): PathedIssue[] {
   }
   const problems: PathedIssue[] = [];
   for (const [key, item] of Object.entries(value)) {
-    problems.push(...prefix("attributes", prefix(key, userDataProblems(item))));
+    append(problems, prefix("attributes", prefix(key, userDataProblems(item))));
   }
   return problems;
 }
@@ -577,12 +578,12 @@ function arrayMetadataV3Problems(value: unknown): PathedIssue[] {
   }
   const doc = value;
   const problems: PathedIssue[] = missingKeys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc);
-  problems.push(...validateExtensionFieldsV3(doc, ARRAY_METADATA_STANDARD_KEYS_V3));
-  problems.push(...checkLiteral(doc, "zarr_format", 3));
-  problems.push(...checkLiteral(doc, "node_type", "array"));
-  problems.push(...validateDimSequence(doc, "shape"));
+  append(problems, validateExtensionFieldsV3(doc, ARRAY_METADATA_STANDARD_KEYS_V3));
+  append(problems, checkLiteral(doc, "zarr_format", 3));
+  append(problems, checkLiteral(doc, "node_type", "array"));
+  append(problems, validateDimSequence(doc, "shape"));
   if (has(doc, "fill_value")) {
-    problems.push(...prefix("fill_value", jsonProblems(doc["fill_value"])));
+    append(problems, prefix("fill_value", jsonProblems(doc["fill_value"])));
   }
   // Every extension point must be understood, so `must_understand: false`
   // is refused at each one, codecs and storage transformers included:
@@ -591,8 +592,9 @@ function arrayMetadataV3Problems(value: unknown): PathedIssue[] {
   // fields, which a reader really can skip.
   for (const key of ["data_type", "chunk_grid", "chunk_key_encoding"]) {
     if (has(doc, key)) {
-      problems.push(
-        ...prefix(
+      append(
+        problems,
+        prefix(
           key,
           metadataFieldV3Problems(doc[key], { allowMustUnderstandFalse: false }),
         ),
@@ -611,8 +613,9 @@ function arrayMetadataV3Problems(value: unknown): PathedIssue[] {
           );
         }
         entries.forEach((entry, index) => {
-          problems.push(
-            ...prefix(
+          append(
+            problems,
+            prefix(
               key,
               prefix(index, metadataFieldV3Problems(entry, { allowMustUnderstandFalse: false })),
             ),
@@ -622,7 +625,7 @@ function arrayMetadataV3Problems(value: unknown): PathedIssue[] {
     }
   }
   if (has(doc, "attributes")) {
-    problems.push(...validateAttributes(doc["attributes"]));
+    append(problems, validateAttributes(doc["attributes"]));
   }
   if (has(doc, "dimension_names")) {
     // Simple typed sequences (dimension_names, shape, chunks) report a single
@@ -667,16 +670,16 @@ function consolidatedEnvelopeProblems(value: unknown, checkEntries: boolean): Pa
   const problems: PathedIssue[] = CONSOLIDATED_ENVELOPE_KEYS
     .filter((key) => !(has(env, key)))
     .map((key) => problem([key], "missing required key", "missing_key"));
-  problems.push(...unexpectedKeys(CONSOLIDATED_ENVELOPE_KEYS, env));
-  problems.push(...checkLiteral(env, "kind", "inline"));
-  problems.push(...checkLiteral(env, "must_understand", false));
+  append(problems, unexpectedKeys(CONSOLIDATED_ENVELOPE_KEYS, env));
+  append(problems, checkLiteral(env, "kind", "inline"));
+  append(problems, checkLiteral(env, "must_understand", false));
   if (has(env, "metadata")) {
     const entries = env["metadata"];
     if (!isPlainObject(entries)) {
       problems.push(problem(["metadata"], "expected an object", "invalid_type"));
     } else if (checkEntries) {
       for (const [key, entry] of Object.entries(entries)) {
-        problems.push(...prefix("metadata", prefix(key, userDataProblems(entry))));
+        append(problems, prefix("metadata", prefix(key, userDataProblems(entry))));
       }
     }
   }
@@ -833,7 +836,7 @@ function consolidatedEntriesV3Problems(value: unknown, depth: number): PathedIss
       // group document holds, apart from the members already judged.
       for (const [member, value] of Object.entries(entry)) {
         if (member !== "zarr_format" && member !== "node_type") {
-          entryProblems.push(...prefix(member, userDataProblems(value)));
+          append(entryProblems, prefix(member, userDataProblems(value)));
         }
       }
     }
@@ -850,7 +853,7 @@ function consolidatedEntriesV3Problems(value: unknown, depth: number): PathedIss
         listings.set(key, (nested as { metadata: Record<string, unknown> }).metadata);
       }
     }
-    problems.push(...prefix("metadata", prefix(key, entryProblems)));
+    append(problems, prefix("metadata", prefix(key, entryProblems)));
     if (faults.length === 0) nodeTypes.set(key, nodeType ?? null);
   }
   const nodes = new Map<string, NodeTypeV3 | null>([["/", "group"]]);
@@ -959,19 +962,21 @@ function groupMetadataV3Problems(value: unknown, checkEntries = true): PathedIss
   }
   const doc = value;
   const problems: PathedIssue[] = missingKeys(GROUP_METADATA_REQUIRED_KEYS_V3, doc);
-  problems.push(
-    ...validateExtensionFieldsV3(doc, GROUP_METADATA_STANDARD_KEYS_V3, [
+  append(
+    problems,
+    validateExtensionFieldsV3(doc, GROUP_METADATA_STANDARD_KEYS_V3, [
       ZARR_V3_CONSOLIDATED_METADATA_KEY,
     ]),
   );
-  problems.push(...checkLiteral(doc, "zarr_format", 3));
-  problems.push(...checkLiteral(doc, "node_type", "group"));
+  append(problems, checkLiteral(doc, "zarr_format", 3));
+  append(problems, checkLiteral(doc, "node_type", "group"));
   if (has(doc, "attributes")) {
-    problems.push(...validateAttributes(doc["attributes"]));
+    append(problems, validateAttributes(doc["attributes"]));
   }
   if (has(doc, ZARR_V3_CONSOLIDATED_METADATA_KEY)) {
-    problems.push(
-      ...prefix(
+    append(
+      problems,
+      prefix(
         ZARR_V3_CONSOLIDATED_METADATA_KEY,
         consolidatedEnvelopeProblems(doc[ZARR_V3_CONSOLIDATED_METADATA_KEY], checkEntries),
       ),
@@ -1028,13 +1033,13 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
   const problems: PathedIssue[] = missingKeys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc);
   for (const [key, item] of Object.entries(doc)) {
     if (!(ARRAY_METADATA_STANDARD_KEYS_V2 as readonly string[]).includes(key)) {
-      problems.push(...prefix(key, jsonProblems(item)));
+      append(problems, prefix(key, jsonProblems(item)));
     }
   }
-  problems.push(...checkLiteral(doc, "zarr_format", 2));
+  append(problems, checkLiteral(doc, "zarr_format", 2));
   const shapeProblems = validateDimSequence(doc, "shape");
   const chunksProblems = validateDimSequence(doc, "chunks");
-  problems.push(...shapeProblems, ...chunksProblems);
+  append(problems, shapeProblems, chunksProblems);
   if (
     shapeProblems.length === 0 &&
     chunksProblems.length === 0 &&
@@ -1047,13 +1052,13 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
     );
   }
   if (has(doc, "dtype")) {
-    problems.push(...prefix("dtype", dtypeV2Problems(doc["dtype"])));
+    append(problems, prefix("dtype", dtypeV2Problems(doc["dtype"])));
   }
   if (has(doc, "order") && !(ZARR_V2_ARRAY_ORDER as readonly unknown[]).includes(doc["order"])) {
     problems.push(outsideOf(["order"], doc["order"], ZARR_V2_ARRAY_ORDER));
   }
   if (has(doc, "compressor") && doc["compressor"] !== null) {
-    problems.push(...prefix("compressor", codecV2Problems(doc["compressor"])));
+    append(problems, prefix("compressor", codecV2Problems(doc["compressor"])));
   }
   if (has(doc, "filters")) {
     const filters = doc["filters"];
@@ -1065,7 +1070,7 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
       // "a list of JSON objects providing codec configurations, or null"
       // sets no minimum, so an empty list is a pipeline with no filters.
       filters.forEach((item, index) => {
-        problems.push(...prefix("filters", prefix(index, codecV2Problems(item))));
+        append(problems, prefix("filters", prefix(index, codecV2Problems(item))));
       });
     }
   }
@@ -1078,10 +1083,10 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
     );
   }
   if (has(doc, "fill_value")) {
-    problems.push(...prefix("fill_value", jsonProblems(doc["fill_value"])));
+    append(problems, prefix("fill_value", jsonProblems(doc["fill_value"])));
   }
   if (has(doc, "attributes")) {
-    problems.push(...validateAttributes(doc["attributes"]));
+    append(problems, validateAttributes(doc["attributes"]));
   }
   return problems;
 }
@@ -1100,10 +1105,10 @@ function groupMetadataV2Problems(value: unknown): PathedIssue[] {
   }
   const doc = value;
   const problems: PathedIssue[] = missingKeys(GROUP_METADATA_REQUIRED_KEYS_V2, doc);
-  problems.push(...unexpectedKeys(GROUP_METADATA_STANDARD_KEYS_V2, doc));
-  problems.push(...checkLiteral(doc, "zarr_format", 2));
+  append(problems, unexpectedKeys(GROUP_METADATA_STANDARD_KEYS_V2, doc));
+  append(problems, checkLiteral(doc, "zarr_format", 2));
   if (has(doc, "attributes")) {
-    problems.push(...validateAttributes(doc["attributes"]));
+    append(problems, validateAttributes(doc["attributes"]));
   }
   return problems;
 }
@@ -1228,8 +1233,8 @@ function consolidatedMetadataV2Problems(value: unknown): PathedIssue[] {
   const problems: PathedIssue[] = ["zarr_consolidated_format", "metadata"]
     .filter((key) => !(has(doc, key)))
     .map((key) => problem([key], "missing required key", "missing_key"));
-  problems.push(...unexpectedKeys(["zarr_consolidated_format", "metadata"], doc));
-  problems.push(...checkLiteral(doc, "zarr_consolidated_format", 1));
+  append(problems, unexpectedKeys(["zarr_consolidated_format", "metadata"], doc));
+  append(problems, checkLiteral(doc, "zarr_consolidated_format", 1));
   const entries = doc["metadata"];
   if (has(doc, "metadata")) {
     if (!isPlainObject(entries)) {
@@ -1237,13 +1242,13 @@ function consolidatedMetadataV2Problems(value: unknown): PathedIssue[] {
     } else {
       for (const [key, item] of Object.entries(entries)) {
         const attributes = key.slice(key.lastIndexOf("/") + 1) === ".zattrs";
-        problems.push(...prefix("metadata", prefix(key, (attributes ? userDataProblems : jsonProblems)(item))));
+        append(problems, prefix("metadata", prefix(key, (attributes ? userDataProblems : jsonProblems)(item))));
       }
     }
   }
   // The nodes are read only from a document whose envelope and entries hold.
   if (problems.length === 0 && isPlainObject(entries)) {
-    problems.push(...consolidatedEntriesV2Problems(entries));
+    append(problems, consolidatedEntriesV2Problems(entries));
   }
   return problems;
 }

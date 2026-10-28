@@ -23,7 +23,7 @@
  * Only an `unknown_key` leaves a configuration usable: the key is reported
  * and left out, and the rules still run on the rest.
  */
-import type { IssuePath, PathedIssue } from "./errors.js";
+import { append, type IssuePath, type PathedIssue } from "./errors.js";
 import { flattenTree } from "./errors.js";
 import { defineOwn, isObject, issue, objectOf, show, type Member, type Parser } from "./typed.js";
 import { validateMetadataFieldV3 } from "./validation.js";
@@ -332,10 +332,10 @@ export function readField(
   const within = new Map<string, ResolvedField>();
   const inside: PathedIssue[] = [];
   for (const nested of nestedFields) {
-    inside.push(...envelopeProblems(nested));
+    append(inside, envelopeProblems(nested));
     const inner = readField(nested.json, nested.kind, nested.path, scope);
     within.set(nestedKey(nested.path.slice(at.length)), inner.field);
-    inside.push(...inner.issues, ...sizeProblems(nested, inner.field));
+    append(inside, inner.issues, sizeProblems(nested, inner.field));
   }
   // The rules may look a nested field up by its name, so they run only when
   // every nested field has one.
@@ -343,7 +343,7 @@ export function readField(
   const own = [...checked.issues];
   const configuration = sound ? (putBack(checked.value) as Record<string, unknown>) : undefined;
   if (configuration !== undefined && definition.rules !== undefined) {
-    own.push(...prefixed(at, definition.rules(configuration, within)));
+    append(own, prefixed(at, definition.rules(configuration, within)));
   }
   if (configuration === undefined || !usable(own)) {
     return { field: refused(definition, within, name), issues: [...own, ...inside] };
@@ -372,7 +372,7 @@ function readCarried(
   const checked = definition.configuration(carried, []);
   const judged = [...checked.issues];
   if (judged.length === 0 && definition.rules !== undefined) {
-    judged.push(...definition.rules(checked.value, NO_NESTED));
+    append(judged, definition.rules(checked.value, NO_NESTED));
   }
   const issues = [...beside, ...judged.map((found) => ({ ...found, path }))];
   if (!usable(beside) || judged.length > 0) {

@@ -67,6 +67,18 @@ export interface ErrorTree {
   readonly children: ReadonlyMap<string | number, ErrorTree>;
 }
 
+/**
+ * Append every item of each list to `target`, one at a time. `push(...list)`
+ * passes each item as a call argument, which throws a `RangeError` for a
+ * list as long as a large document can make one (a `fill_value` holding
+ * 200,000 `NaN` values has as many problems).
+ */
+export function append<T>(target: T[], ...lists: ReadonlyArray<ReadonlyArray<T>>): void {
+  for (const list of lists) {
+    for (const item of list) target.push(item);
+  }
+}
+
 /** Whether `tree` holds no issues anywhere — the success verdict. */
 export function isEmptyTree(tree: ErrorTree): boolean {
   return tree.issues.length === 0 && tree.children.size === 0;

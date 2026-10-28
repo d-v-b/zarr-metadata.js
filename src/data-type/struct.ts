@@ -7,7 +7,7 @@ import {
   type DataTypeDefinition,
   type StorageClass,
 } from "../definition.js";
-import type { PathedIssue } from "../errors.js";
+import { append, type PathedIssue } from "../errors.js";
 import { issue, json, mappingOf, objectOf, required, sequenceOf, show, string } from "../typed.js";
 
 /** One field of a `struct` data type; `data_type` recurses (structs may nest). */
@@ -84,7 +84,7 @@ export const struct: DataTypeDefinition<StructConfiguration, Record<string, unkn
         return;
       }
       const fieldType = nestedAt(nested, "fields", index, "data_type");
-      issues.push(...fillValueProblems(fieldType, value[member.name], [member.name]));
+      append(issues, fillValueProblems(fieldType, value[member.name], [member.name]));
     });
     for (const key of Object.keys(value)) {
       if (!declared.has(key)) issues.push(issue([key], `no struct field is named ${show(key)}`, "unknown_key"));

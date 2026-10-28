@@ -1,6 +1,6 @@
 /** The zarr-extensions `scale_offset` codec. */
 import { configured, fillValueProblems, type CodecDefinition } from "../definition.js";
-import type { PathedIssue } from "../errors.js";
+import { append, type PathedIssue } from "../errors.js";
 import { issue, json, optional, show } from "../typed.js";
 import { NOT_NUMBERS } from "./arithmetic.js";
 
@@ -37,7 +37,7 @@ export const scaleOffset: CodecDefinition<ScaleOffsetCodecConfiguration> = {
     const issues: PathedIssue[] = [];
     for (const member of ["offset", "scale"] as const) {
       const value = configuration[member];
-      if (value !== undefined && value !== null) issues.push(...fillValueProblems(source, value, [member]));
+      if (value !== undefined && value !== null) append(issues, fillValueProblems(source, value, [member]));
     }
     return issues;
   },

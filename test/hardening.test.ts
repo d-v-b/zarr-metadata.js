@@ -279,6 +279,17 @@ describe("validateMetadataV3 on a group", () => {
   });
 });
 
+describe("problem lists as long as the document", () => {
+  it("are returned, not thrown, for a large array of non-finite numbers", () => {
+    const many = Array.from({ length: 200_000 }, () => NaN);
+    expect(isJson(many)).toBe(false);
+    expect(flattenTree(validateArrayMetadataV3({ ...VALID_ARRAY, fill_value: many }))).toHaveLength(200_000);
+    const grid = { name: "rectilinear", configuration: { kind: "inline", chunk_shapes: [Array.from({ length: 200_000 }, () => 0)] } };
+    const codecs = [{ name: "bytes", configuration: { endian: "little" } }];
+    expect(flattenTree(validateArraySemanticsV3({ ...VALID_ARRAY, chunk_grid: grid, codecs }))).toHaveLength(200_000);
+  });
+});
+
 describe("non-finite numbers", () => {
   const paths = (tree: Parameters<typeof flattenTree>[0]) =>
     flattenTree(tree).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
