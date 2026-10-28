@@ -149,12 +149,25 @@ function show(value: unknown): string {
 
 /** Return every reason `value` is not JSON-serializable (recursively). */
 function jsonProblems(value: unknown): PathedIssue[] {
-  return validateJsonAtDepth(value, 0);
+  return validateJsonAtDepth(value, 0, true);
 }
 
-function validateJsonAtDepth(value: unknown, depth: number): PathedIssue[] {
+/**
+ * Return every reason `value` is not user data: JSON, where a non-finite
+ * number is allowed. zarr-python writes attributes with the defaults of
+ * Python's `json` module, so an xarray `_FillValue` or a CF
+ * `missing_value` of NaN is stored as a bare `NaN`; the reference
+ * implementation reads such a value in attributes and in the other user
+ * data a document holds (extension fields nothing interprets), and
+ * refuses it wherever the spec interprets a value.
+ */
+function userDataProblems(value: unknown): PathedIssue[] {
+  return validateJsonAtDepth(value, 0, false);
+}
+
+function validateJsonAtDepth(value: unknown, depth: number, finite: boolean): PathedIssue[] {
   if (typeof value === "number") {
-    if (Number.isFinite(value)) return [];
+    if (Number.isFinite(value) || !finite) return [];
     return [problem([], `non-finite number ${value} is not JSON`, "invalid_value")];
   }
   if (typeof value === "string" || typeof value === "boolean" || value === null) {
@@ -171,7 +184,7 @@ function validateJsonAtDepth(value: unknown, depth: number): PathedIssue[] {
       ];
     }
     value.forEach((item, index) => {
-      problems.push(...prefix(index, validateJsonAtDepth(item, depth + 1)));
+      problems.push(...prefix(index, validateJsonAtDepth(item, depth + 1, finite)));
     });
     return problems;
   }
@@ -180,7 +193,7 @@ function validateJsonAtDepth(value: unknown, depth: number): PathedIssue[] {
       return [problem([], `maximum nesting depth of ${MAX_JSON_DEPTH} exceeded`, "invalid_value")];
     }
     for (const [key, item] of Object.entries(value)) {
-      problems.push(...prefix(key, validateJsonAtDepth(item, depth + 1)));
+      problems.push(...prefix(key, validateJsonAtDepth(item, depth + 1, finite)));
     }
     return problems;
   }
@@ -274,7 +287,7 @@ function nameProblems(name: string, path: IssuePath): PathedIssue[] {
   ];
 }
 
-/** Validate v3 top-level unknown-field JSON payloads. */
+/** Validate v3 top-level unknown-field payloads: user data, which nothing here interprets. */
 function validateExtensionFieldsV3(
   doc: Record<string, unknown>,
   standardKeys: ReadonlyArray<string>,
@@ -284,7 +297,7 @@ function validateExtensionFieldsV3(
   const problems: PathedIssue[] = [];
   for (const [key, value] of Object.entries(doc)) {
     if (reserved.has(key)) continue;
-    problems.push(...prefix(key, jsonProblems(value)));
+    problems.push(...prefix(key, userDataProblems(value)));
   }
   return problems;
 }
@@ -534,7 +547,8 @@ function codecV2Problems(value: unknown): PathedIssue[] {
 }
 
 /**
- * Validate an `attributes` value: a JSON object.
+ * Validate an `attributes` value: an object of user data, where a
+ * non-finite number is allowed (see `userDataProblems`).
  *
  * Unlike the other validators (which return value-relative locs for the
  * caller to prefix), this emits the already-parent-relative `["attributes"]`
@@ -546,7 +560,7 @@ function validateAttributes(value: unknown): PathedIssue[] {
   }
   const problems: PathedIssue[] = [];
   for (const [key, item] of Object.entries(value)) {
-    problems.push(...prefix("attributes", prefix(key, jsonProblems(item))));
+    problems.push(...prefix("attributes", prefix(key, userDataProblems(item))));
   }
   return problems;
 }
@@ -642,8 +656,8 @@ const CONSOLIDATED_ENVELOPE_KEYS = ["kind", "must_understand", "metadata"] as co
  * Every reason `value` is not the envelope the core spec fixes for a group's
  * `consolidated_metadata` member: `kind` is `"inline"`, `must_understand` is
  * `false`, `metadata` is an object, and nothing else. Locs are
- * value-relative. With `checkEntries`, each entry is checked as JSON only,
- * as a group document holds it.
+ * value-relative. With `checkEntries`, each entry is checked as user data
+ * only, as a group document holds it.
  */
 function consolidatedEnvelopeProblems(value: unknown, checkEntries: boolean): PathedIssue[] {
   if (!isPlainObject(value)) {
@@ -662,7 +676,7 @@ function consolidatedEnvelopeProblems(value: unknown, checkEntries: boolean): Pa
       problems.push(problem(["metadata"], "expected an object", "invalid_type"));
     } else if (checkEntries) {
       for (const [key, entry] of Object.entries(entries)) {
-        problems.push(...prefix("metadata", prefix(key, jsonProblems(entry))));
+        problems.push(...prefix("metadata", prefix(key, userDataProblems(entry))));
       }
     }
   }
@@ -1209,7 +1223,8 @@ function consolidatedMetadataV2Problems(value: unknown): PathedIssue[] {
       problems.push(problem(["metadata"], "expected an object with string keys", "invalid_type"));
     } else {
       for (const [key, item] of Object.entries(entries)) {
-        problems.push(...prefix("metadata", prefix(key, jsonProblems(item))));
+        const attributes = key.slice(key.lastIndexOf("/") + 1) === ".zattrs";
+        problems.push(...prefix("metadata", prefix(key, (attributes ? userDataProblems : jsonProblems)(item))));
       }
     }
   }
@@ -1247,6 +1262,69 @@ function storeGet(mapping: StoreMapping, key: string): Uint8Array | string | und
   return Object.hasOwn(record, key) ? record[key] : undefined;
 }
 
+const NON_FINITE_TOKENS = ["-Infinity", "Infinity", "NaN"] as const;
+const NON_FINITE_VALUES: Record<(typeof NON_FINITE_TOKENS)[number], number> = {
+  "-Infinity": -Infinity,
+  Infinity: Infinity,
+  NaN: NaN,
+};
+
+/** A marker string for one non-finite token, unique to one parse or write. */
+function nonFiniteMark(nonce: string, token: string): string {
+  return `\u0000zarr-metadata-${nonce}-${token}`;
+}
+
+function freshNonce(text: string): string {
+  let nonce = Math.random().toString(36).slice(2);
+  while (text.includes(nonce)) nonce = Math.random().toString(36).slice(2);
+  return nonce;
+}
+
+/**
+ * Parse JSON text that may hold the bare tokens `NaN`, `Infinity` and
+ * `-Infinity`, as Python's `json` module writes and reads them. Each token
+ * outside a string becomes the number it names; anything else that is not
+ * RFC 8259 JSON still fails, with `JSON.parse`'s own message.
+ */
+function parseJsonText(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const nonce = freshNonce(text);
+    let out = "";
+    let found = false;
+    let index = 0;
+    scan: while (index < text.length) {
+      if (text[index] === '"') {
+        let end = index + 1;
+        while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
+        out += text.slice(index, end + 1);
+        index = end + 1;
+        continue;
+      }
+      for (const token of NON_FINITE_TOKENS) {
+        if (text.startsWith(token, index)) {
+          out += JSON.stringify(nonFiniteMark(nonce, token));
+          index += token.length;
+          found = true;
+          continue scan;
+        }
+      }
+      out += text[index];
+      index += 1;
+    }
+    if (!found) throw error;
+    const marks = new Map<unknown, number>(
+      NON_FINITE_TOKENS.map((token) => [nonFiniteMark(nonce, token), NON_FINITE_VALUES[token]]),
+    );
+    try {
+      return JSON.parse(out, (_key, value: unknown) => marks.get(value) ?? value);
+    } catch {
+      throw error;
+    }
+  }
+}
+
 /**
  * Decode the JSON document stored at `key` in `mapping`.
  *
@@ -1254,8 +1332,14 @@ function storeGet(mapping: StoreMapping, key: string): Uint8Array | string | und
  * failure surfaces as `MetadataValidationError`: a missing store key is a
  * `missing_key` problem and undecodable bytes or malformed JSON are an
  * `invalid_json` problem, rather than leaking a decode exception to
- * callers. `JSON.parse` already rejects the non-standard `NaN`/`Infinity`
- * constants Python has to opt out of explicitly.
+ * callers.
+ *
+ * The bare tokens `NaN`, `Infinity` and `-Infinity`, which zarr-python
+ * writes in attributes with the defaults of Python's `json` module, are
+ * read as the numbers they name, as the reference implementation reads
+ * them. The document validators then accept them where the reference
+ * does (attributes and other user data) and report each one anywhere else
+ * at its location, instead of the whole document failing to decode.
  *
  * One intentional divergence: bytes must be UTF-8 (RFC 8259's mandated
  * interchange encoding). Python's `json.loads` auto-detects UTF-16/32 and
@@ -1269,7 +1353,7 @@ export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
   try {
     const text =
       typeof raw === "string" ? raw : new TextDecoder("utf-8", { fatal: true }).decode(raw);
-    return JSON.parse(text);
+    return parseJsonText(text);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new MetadataValidationError(
@@ -1278,21 +1362,47 @@ export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
   }
 }
 
+/** `JSON.stringify`, but writing each non-finite number as the bare token Python's `json` module writes. */
+function stringifyNonFinite(value: unknown, indent: number | string | undefined): string {
+  const nonce = freshNonce("");
+  const text = JSON.stringify(
+    value,
+    (_key, item: unknown) => {
+      if (typeof item !== "number" || Number.isFinite(item)) return item;
+      return nonFiniteMark(nonce, Number.isNaN(item) ? "NaN" : item > 0 ? "Infinity" : "-Infinity");
+    },
+    indent,
+  );
+  let out = text;
+  for (const token of NON_FINITE_TOKENS) {
+    out = out.split(JSON.stringify(nonFiniteMark(nonce, token))).join(token);
+  }
+  return out;
+}
+
 /**
- * Encode a metadata document as strict RFC 8259 JSON bytes.
+ * Encode a metadata document as JSON bytes.
  *
- * Ported from the Python reference's `dump_store_json` (`allow_nan=False`):
- * a non-JSON value — a non-finite number, a `Map`, a `BigInt` — throws
+ * Ported from the Python reference's `dump_store_json`: a non-JSON value —
+ * a `Map`, a `BigInt`, a non-finite number — throws
  * `MetadataValidationError` instead of being silently rewritten to `null`
- * the way bare `JSON.stringify` would.
+ * the way bare `JSON.stringify` would. With `allowNonFinite`, a non-finite
+ * number is written as the bare token `NaN`, `Infinity` or `-Infinity`
+ * instead, as zarr-python writes attributes; validate the document first,
+ * so such numbers remain only where the reference implementation reads
+ * them (attributes and other user data).
  */
 export function dumpStoreJson(
   value: unknown,
-  options: { indent?: number | string } = {},
+  options: { indent?: number | string; allowNonFinite?: boolean } = {},
 ): Uint8Array {
-  const problems = jsonProblems(value);
+  const problems = options.allowNonFinite === true ? userDataProblems(value) : jsonProblems(value);
   if (problems.length > 0) throw new MetadataValidationError(treeOf(problems));
-  return new TextEncoder().encode(JSON.stringify(value, null, options.indent));
+  const text =
+    options.allowNonFinite === true
+      ? stringifyNonFinite(value, options.indent)
+      : JSON.stringify(value, null, options.indent);
+  return new TextEncoder().encode(text);
 }
 
 // ---------------------------------------------------------------------------

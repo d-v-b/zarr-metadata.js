@@ -16,6 +16,9 @@ import {
   parseJson,
   validateArrayMetadataV2,
   validateArrayMetadataV3,
+  validateConsolidatedMetadataV2,
+  validateConsolidatedMetadataV3,
+  validateGroupMetadataV3,
   validateJson,
 } from "../src/index.js";
 
@@ -144,8 +147,18 @@ describe("loadStoreJson", () => {
     }
   });
 
-  it("reports malformed JSON, invalid UTF-8, and non-standard constants as invalid_json", () => {
-    for (const raw of ["{", new Uint8Array([0xff, 0xfe]), "NaN"]) {
+  it("reads the bare NaN, Infinity and -Infinity tokens zarr-python writes, outside strings only", () => {
+    const text = '{"a": NaN, "b": [Infinity, -Infinity], "c": "NaN \\" Infinity", "NaN": 1}';
+    expect(loadStoreJson({ key: text }, "key")).toEqual({
+      a: NaN,
+      b: [Infinity, -Infinity],
+      c: 'NaN " Infinity',
+      NaN: 1,
+    });
+  });
+
+  it("reports malformed JSON, invalid UTF-8, and misplaced constants as invalid_json", () => {
+    for (const raw of ["{", new Uint8Array([0xff, 0xfe]), "[1 NaN]", "NaNa", "nan"]) {
       let kind: string | undefined;
       try {
         loadStoreJson({ key: raw }, "key");
@@ -166,6 +179,62 @@ describe("dumpStoreJson", () => {
   it("throws on non-JSON values instead of silently writing null", () => {
     expect(() => dumpStoreJson({ fill_value: NaN })).toThrow(MetadataValidationError);
     expect(() => dumpStoreJson(new Map())).toThrow(MetadataValidationError);
+  });
+
+  it("writes non-finite numbers as bare tokens when asked, and reads them back", () => {
+    const document = { ...VALID_ARRAY, attributes: { _FillValue: NaN, range: [-Infinity, Infinity] } };
+    const bytes = dumpStoreJson(document, { allowNonFinite: true });
+    expect(new TextDecoder().decode(bytes)).toContain('"_FillValue":NaN,"range":[-Infinity,Infinity]');
+    expect(loadStoreJson({ "zarr.json": bytes }, "zarr.json")).toEqual(document);
+    expect(() => dumpStoreJson(new Map(), { allowNonFinite: true })).toThrow(MetadataValidationError);
+  });
+});
+
+describe("non-finite numbers", () => {
+  const paths = (tree: Parameters<typeof flattenTree>[0]) =>
+    flattenTree(tree).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+
+  it("are accepted in attributes and other user data", () => {
+    expect(paths(validateArrayMetadataV3({ ...VALID_ARRAY, attributes: { a: NaN }, "x.ext": { must_understand: false, v: Infinity } }))).toEqual([]);
+    expect(
+      paths(
+        validateGroupMetadataV3({
+          zarr_format: 3,
+          node_type: "group",
+          attributes: { a: -Infinity },
+          consolidated_metadata: { kind: "inline", must_understand: false, metadata: { a: { fill_value: NaN } } },
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      paths(
+        validateConsolidatedMetadataV3({
+          kind: "inline",
+          must_understand: false,
+          metadata: { a: { ...VALID_ARRAY, attributes: { a: NaN } } },
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      paths(validateConsolidatedMetadataV2({ zarr_consolidated_format: 1, metadata: { ".zgroup": { zarr_format: 2 }, ".zattrs": { a: NaN } } })),
+    ).toEqual([]);
+  });
+
+  it("are refused where the spec interprets a value", () => {
+    expect(paths(validateArrayMetadataV3({ ...VALID_ARRAY, fill_value: NaN }))).toEqual(["fill_value: invalid_value"]);
+    expect(
+      paths(validateConsolidatedMetadataV3({ kind: "inline", must_understand: false, metadata: { a: { ...VALID_ARRAY, fill_value: NaN } } })),
+    ).toEqual(["metadata.a.fill_value: invalid_value"]);
+    expect(
+      paths(
+        validateArrayMetadataV2({
+          zarr_format: 2, shape: [1], chunks: [1], dtype: "<f8", compressor: null, fill_value: null, order: "C", filters: null, extra: NaN,
+        }),
+      ),
+    ).toEqual(["extra: invalid_value"]);
+    expect(paths(validateConsolidatedMetadataV2({ zarr_consolidated_format: 1, metadata: { foo: Infinity } }))).toEqual([
+      "metadata.foo: invalid_value",
+    ]);
   });
 });
 
