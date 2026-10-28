@@ -217,6 +217,22 @@ describe("validateGroupMetadataV3", () => {
   });
 });
 
+describe("two listings of one group", () => {
+  it("differ when one attribute is NaN and the other null", () => {
+    const group = (attributes: Record<string, unknown>) => ({ zarr_format: 3, node_type: "group", attributes });
+    const listing = (metadata: Record<string, unknown>) => ({ kind: "inline", must_understand: false, metadata });
+    const problems = flattenTree(
+      validateConsolidatedMetadataV3(
+        listing({
+          g: { zarr_format: 3, node_type: "group", consolidated_metadata: listing({ x: group({ a: NaN }) }) },
+          "g/x": group({ a: null }),
+        }),
+      ),
+    ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems).toEqual(["metadata.g.consolidated_metadata.metadata.x: invalid_value"]);
+  });
+});
+
 describe("validateConsolidatedMetadataV3", () => {
   it("checks a listed document that is no node as user data", () => {
     const problems = flattenTree(

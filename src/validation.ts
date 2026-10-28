@@ -900,8 +900,13 @@ function consolidatedEntriesV3Problems(value: unknown, depth: number): PathedIss
   return problems;
 }
 
-/** `value` as JSON text with object keys sorted, so two values written alike compare equal. */
+/**
+ * `value` as JSON text with object keys sorted, so two values written alike
+ * compare equal. A non-finite number is written as its own token, as
+ * Python's `json` module writes it, so `NaN` and `null` stay apart.
+ */
 function sortedJson(value: unknown): string {
+  if (typeof value === "number" && !Number.isFinite(value)) return String(value);
   if (Array.isArray(value)) return `[${value.map(sortedJson).join(",")}]`;
   if (isPlainObject(value)) {
     const keys = Object.keys(value).sort();
@@ -1644,7 +1649,9 @@ export function mustUnderstandExtensionFieldsV3(value: unknown): string[] {
  * @deprecated `validateConsolidatedMetadataV2` now reads the entries too,
  * as the reference implementation does, and reports these same problems
  * whenever the envelope and entries are JSON. This function reports them
- * even when the envelope has problems of its own.
+ * even when the envelope has problems of its own. Unlike earlier releases,
+ * a `.zattrs` entry with no `.zarray` or `.zgroup` beside it forms no node
+ * and is not checked to be an object, as in the reference implementation.
  */
 export function validateConsolidatedDocumentsV2(value: unknown): ErrorTree {
   if (!isPlainObject(value)) return treeOf([]);
