@@ -411,5 +411,31 @@
         "kind": "unknown_key"
       }
     ]
+  },
+  {
+    "description": "keys with a leading or doubled slash name the same node paths as without (as the reference reads them)",
+    "document": {
+      "zarr_consolidated_format": 1,
+      "metadata": {
+        "/a/.zgroup": {
+          "zarr_format": 2
+        },
+        "a//b/.zarray": {
+          "zarr_format": 2,
+          "shape": [
+            100
+          ],
+          "chunks": [
+            10
+          ],
+          "dtype": "<f8",
+          "compressor": null,
+          "fill_value": 0,
+          "order": "C",
+          "filters": null
+        }
+      }
+    },
+    "problems": []
   }
 ]
