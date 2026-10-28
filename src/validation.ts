@@ -1,12 +1,21 @@
 /**
  * Structural validation for Zarr metadata documents.
  *
- * A faithful port of `zarr_metadata.model._validation` (the Python reference
- * implementation). Validators check JSON structure (key presence, value
- * shapes, and fixed literals like `zarr_format`), not domain validity. Each
- * concept gets a `validate*` function returning every problem found, an
- * `is*` type guard, and a `parse*` function that narrows or throws
- * `MetadataValidationError`.
+ * A port of the structural part of the `zarr_metadata.model` readers (the
+ * Python reference implementation): what they check whatever extensions
+ * their scope defines. Validators check JSON structure (key presence, value
+ * shapes, fixed literals like `zarr_format`, the metadata field envelope and
+ * its extension names, v2 typestrs and field records, and the hierarchy a
+ * consolidated listing forms), not what an extension's name means; that is
+ * the semantic layer (`semantics.ts`). Together the two report what the
+ * reference readers report in their default scope, which the conformance
+ * corpus asserts. Each concept gets a `validate*` function returning every
+ * problem found, an `is*` type guard, and a `parse*` function that narrows
+ * or throws `MetadataValidationError`.
+ *
+ * A value of the wrong JSON type is an `invalid_type`; a value of the right
+ * type outside a closed set (`node_type: "Array"`) is an `invalid_value`;
+ * a key a closed object does not declare is an `unknown_key`.
  *
  * Two Python behaviors have no JS analog and are intentionally absent:
  *
@@ -39,6 +48,7 @@
 
 import type { JSONValue, ZarrV3MetadataFieldJSON } from "./common.js";
 import {
+  append,
   MetadataValidationError,
   treeOf,
   type ErrorTree,
@@ -140,12 +150,25 @@ function show(value: unknown): string {
 
 /** Return every reason `value` is not JSON-serializable (recursively). */
 function jsonProblems(value: unknown): PathedIssue[] {
-  return validateJsonAtDepth(value, 0);
+  return validateJsonAtDepth(value, 0, true);
 }
 
-function validateJsonAtDepth(value: unknown, depth: number): PathedIssue[] {
+/**
+ * Return every reason `value` is not user data: JSON, where a non-finite
+ * number is allowed. zarr-python writes attributes with the defaults of
+ * Python's `json` module, so an xarray `_FillValue` or a CF
+ * `missing_value` of NaN is stored as a bare `NaN`; the reference
+ * implementation reads such a value in attributes and in the other user
+ * data a document holds (extension fields nothing interprets), and
+ * refuses it wherever the spec interprets a value.
+ */
+function userDataProblems(value: unknown): PathedIssue[] {
+  return validateJsonAtDepth(value, 0, false);
+}
+
+function validateJsonAtDepth(value: unknown, depth: number, finite: boolean): PathedIssue[] {
   if (typeof value === "number") {
-    if (Number.isFinite(value)) return [];
+    if (Number.isFinite(value) || !finite) return [];
     return [problem([], `non-finite number ${value} is not JSON`, "invalid_value")];
   }
   if (typeof value === "string" || typeof value === "boolean" || value === null) {
@@ -162,7 +185,7 @@ function validateJsonAtDepth(value: unknown, depth: number): PathedIssue[] {
       ];
     }
     value.forEach((item, index) => {
-      problems.push(...prefix(index, validateJsonAtDepth(item, depth + 1)));
+      append(problems, prefix(index, validateJsonAtDepth(item, depth + 1, finite)));
     });
     return problems;
   }
@@ -171,7 +194,7 @@ function validateJsonAtDepth(value: unknown, depth: number): PathedIssue[] {
       return [problem([], `maximum nesting depth of ${MAX_JSON_DEPTH} exceeded`, "invalid_value")];
     }
     for (const [key, item] of Object.entries(value)) {
-      problems.push(...prefix(key, validateJsonAtDepth(item, depth + 1)));
+      append(problems, prefix(key, validateJsonAtDepth(item, depth + 1, finite)));
     }
     return problems;
   }
@@ -190,31 +213,82 @@ function missingKeys(
     .map((key) => problem([key], "missing required key", "missing_key"));
 }
 
-/** One problem per member outside a closed document's declared shape. */
+/** One `unknown_key` problem per member outside a closed object's declared keys. */
 function unexpectedKeys(
   allowed: ReadonlyArray<string>,
   doc: Record<string, unknown>,
 ): PathedIssue[] {
   return Object.keys(doc)
     .filter((key) => !allowed.includes(key))
-    .map((key) => problem([key], "unexpected document member", "invalid_value"));
+    .map((key) => problem([key], `unexpected key ${show(key)}`, "unknown_key"));
 }
 
-/** One `invalid_value` problem if `doc[key]` is present but not `expected`. */
+/** The JSON type of `value`, as the reference implementation compares types. */
+function jsonType(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+}
+
+/**
+ * The problem for `value` outside the closed set `allowed`: `invalid_type`
+ * when no member of the set has its JSON type (a number where every member
+ * is a string), else `invalid_value`.
+ */
+function outsideOf(
+  path: IssuePath,
+  value: unknown,
+  allowed: ReadonlyArray<string | number | boolean>,
+): PathedIssue {
+  const sameType = allowed.some((entry) => jsonType(entry) === jsonType(value));
+  const expected = allowed.length === 1
+    ? show(allowed[0])
+    : `one of ${show([...allowed].sort())}`;
+  return problem(
+    path,
+    `expected ${expected}, got ${show(value)}`,
+    sameType ? "invalid_value" : "invalid_type",
+  );
+}
+
+/** One problem if `doc[key]` is present but not `expected`. */
 function checkLiteral(
   doc: Record<string, unknown>,
   key: string,
   expected: string | number | boolean,
 ): PathedIssue[] {
-  if (has(doc, key) && (typeof doc[key] !== typeof expected || doc[key] !== expected)) {
-    return [
-      problem([key], `expected ${show(expected)}, got ${show(doc[key])}`, "invalid_value"),
-    ];
+  if (has(doc, key) && doc[key] !== expected) {
+    return [outsideOf([key], doc[key], [expected])];
   }
   return [];
 }
 
-/** Validate v3 top-level unknown-field JSON payloads. */
+/**
+ * A registered extension name: the spec's `^[a-z][a-z0-9-_.]+$`. A URI,
+ * which earlier versions of the spec required, is still permitted; the URI
+ * pattern matches a scheme, a colon, and URI characters (RFC 3986).
+ */
+const EXTENSION_NAME = /^[a-z][a-z0-9_.-]+$/;
+const URI_NAME = /^[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]+$/;
+
+/** Whether `name` is a valid v3 extension name: a registered name or a URI. */
+function isExtensionNameV3(name: string): boolean {
+  return EXTENSION_NAME.test(name) || URI_NAME.test(name);
+}
+
+function nameProblems(name: string, path: IssuePath): PathedIssue[] {
+  if (isExtensionNameV3(name)) return [];
+  return [
+    problem(
+      path,
+      "expected an extension name -- lower-case letters, digits, '-', '_' and '.', " +
+        `starting with a letter -- or a URI, got ${show(name)}`,
+      "invalid_value",
+    ),
+  ];
+}
+
+/** Validate v3 top-level unknown-field payloads: user data, which nothing here interprets. */
 function validateExtensionFieldsV3(
   doc: Record<string, unknown>,
   standardKeys: ReadonlyArray<string>,
@@ -224,7 +298,7 @@ function validateExtensionFieldsV3(
   const problems: PathedIssue[] = [];
   for (const [key, value] of Object.entries(doc)) {
     if (reserved.has(key)) continue;
-    problems.push(...prefix(key, jsonProblems(value)));
+    append(problems, prefix(key, userDataProblems(value)));
   }
   return problems;
 }
@@ -233,14 +307,15 @@ function validateExtensionFieldsV3(
  * Return every reason `value` is not a v3 metadata field.
  *
  * A metadata field is a bare name string or an object containing `name` and
- * optional `configuration` and `must_understand` members.
+ * optional `configuration` and `must_understand` members. Every name must be
+ * a valid extension name (`isExtensionNameV3`).
  */
 function metadataFieldV3Problems(
   value: unknown,
   options: { allowMustUnderstandFalse?: boolean } = {},
 ): PathedIssue[] {
   const { allowMustUnderstandFalse = true } = options;
-  if (typeof value === "string") return [];
+  if (typeof value === "string") return nameProblems(value, []);
   if (!isPlainObject(value)) {
     return [
       problem([], "expected a metadata field (string or extension object)", "invalid_type"),
@@ -250,19 +325,23 @@ function metadataFieldV3Problems(
   const allowedKeys = new Set(["name", "configuration", "must_understand"]);
   for (const key of Object.keys(value)) {
     if (!allowedKeys.has(key)) {
-      problems.push(problem([key], "unexpected metadata field member", "invalid_value"));
+      problems.push(problem([key], `unexpected key ${show(key)}`, "unknown_key"));
     }
   }
-  if (typeof value["name"] !== "string") {
+  if (!has(value, "name")) {
+    problems.push(problem(["name"], "missing required key", "missing_key"));
+  } else if (typeof value["name"] !== "string") {
     problems.push(problem(["name"], "expected a string name", "invalid_type"));
+  } else {
+    append(problems, nameProblems(value["name"], ["name"]));
   }
   if (has(value, "configuration")) {
     const configuration = value["configuration"];
     if (!isPlainObject(configuration)) {
-      problems.push(problem(["configuration"], "expected a mapping", "invalid_type"));
+      problems.push(problem(["configuration"], "expected an object", "invalid_type"));
     } else {
       for (const [key, item] of Object.entries(configuration)) {
-        problems.push(...prefix("configuration", prefix(key, jsonProblems(item))));
+        append(problems, prefix("configuration", prefix(key, jsonProblems(item))));
       }
     }
   }
@@ -302,7 +381,7 @@ function validateDimSequence(doc: Record<string, unknown>, key: string): PathedI
   if (!(has(doc, key))) return [];
   const value = doc[key];
   if (!isIntSequence(value)) {
-    return [problem([key], "expected a sequence of int", "invalid_type")];
+    return [problem([key], "expected an array of integers", "invalid_type")];
   }
   if (value.some((item) => item < 0)) {
     return [problem([key], "expected non-negative integers", "invalid_value")];
@@ -311,44 +390,166 @@ function validateDimSequence(doc: Record<string, unknown>, key: string): PathedI
 }
 
 /**
- * Whether `value` is shaped like a v2 dtype: a string or field records.
+ * A NumPy typestr: a byte order, a type code, a size in bytes (only `|O`
+ * omits it), and an optional bracketed time unit with its multiplier.
+ * ASCII digits only, as NumPy reads them.
+ */
+const TYPESTR = /^([<>|])([A-Za-z])([0-9]*)(?:\[([0-9]*)([A-Za-zμ]+)\])?$/;
+
+/** Every reason the string `name` is not a NumPy typestr. Which typestrs name real types is not checked. */
+function typestrProblems(name: string): PathedIssue[] {
+  const match = TYPESTR.exec(name);
+  if (match === null) {
+    return [
+      problem(
+        [],
+        "expected a NumPy typestr -- a byte order '<', '>' or '|', a type code and a size " +
+          `in bytes, '<f4' -- got ${show(name)}`,
+        "invalid_value",
+      ),
+    ];
+  }
+  if (match[3] === "" && match[2] !== "O") {
+    return [
+      problem([], `expected a size in bytes after the type code, '<f4', got ${show(name)}`, "invalid_value"),
+    ];
+  }
+  return [];
+}
+
+/**
+ * Return every reason `value` is not shaped like a v2 dtype: a typestr, or
+ * a list of field records.
  *
  * A field record is a `[name, dtype]` or `[name, dtype, shape]` array, where
- * `dtype` is itself a string or nested field records and `shape` is an array
- * of int. The string content is NOT interpreted — whether the string names a
- * real dtype is domain validity, not structure.
+ * `dtype` is itself a dtype and `shape` an array of non-negative integers,
+ * and no two records share a name. A record's problems are located as the
+ * reference implementation's union check locates them: a record whose
+ * length fits neither form, or that fits one form with problems in both
+ * readings, is reported as a whole.
  */
-function isDtypeV2(value: unknown, depth = 0): boolean {
-  if (typeof value === "string") return true;
-  if (!isDenseArray(value)) return false;
-  // A dtype nested past the depth cap is rejected wholesale rather than
-  // recursed into; this is the same hardening rule as validateJson's.
-  if (depth >= MAX_JSON_DEPTH) return false;
-  for (const record of value) {
-    if (typeof record === "string" || !isDenseArray(record)) return false;
-    if (record.length !== 2 && record.length !== 3) return false;
-    if (typeof record[0] !== "string") return false;
-    if (!isDtypeV2(record[1], depth + 1)) return false;
-    if (record.length === 3 && !isIntSequence(record[2])) return false;
+function dtypeV2Problems(value: unknown, depth = 0): PathedIssue[] {
+  if (typeof value === "string") return typestrProblems(value);
+  if (!isDenseArray(value)) {
+    return [
+      problem(
+        [],
+        `expected a v2 dtype -- a NumPy typestr, or an array of field records -- got ${show(value)}`,
+        "invalid_type",
+      ),
+    ];
   }
-  return true;
+  // A dtype nested past the depth cap is rejected rather than recursed
+  // into; this is the same hardening rule as validateJson's.
+  if (depth >= MAX_JSON_DEPTH) {
+    return [problem([], `maximum nesting depth of ${MAX_JSON_DEPTH} exceeded`, "invalid_value")];
+  }
+  const problems: PathedIssue[] = [];
+  // The records' own shapes decide whether the names are compared, as the
+  // reference implementation's struct rules run only on records that check.
+  let sound = true;
+  value.forEach((record, index) => {
+    const read = fieldRecordV2Problems(record, depth);
+    if (read.own.length > 0 || !read.named) sound = false;
+    append(problems, prefix(index, [...read.own, ...read.nested]));
+  });
+  if (sound) {
+    const seen = new Map<string, number>();
+    value.forEach((record, index) => {
+      const name = (record as unknown[])[0] as string;
+      const first = seen.get(name);
+      if (first === undefined) {
+        seen.set(name, index);
+      } else {
+        problems.push(
+          problem(
+            [index, 0],
+            `duplicate field name ${show(name)}, already used by record ${first}`,
+            "invalid_value",
+          ),
+        );
+      }
+    });
+  }
+  return problems;
 }
 
-/** Whether `value` is shaped like a v2 codec config: an object with a string `id`. */
-function isCodecV2(value: unknown): boolean {
-  return isPlainObject(value) && typeof value["id"] === "string";
+/**
+ * The problems of one v2 field record: `own` from its shape, and `nested`
+ * from the dtype it holds (read only when the record reads as a form that
+ * reaches its dtype). `named` says whether that dtype is a string or a list.
+ */
+function fieldRecordV2Problems(
+  record: unknown,
+  depth: number,
+): { own: PathedIssue[]; nested: PathedIssue[]; named: boolean } {
+  const wholeRecord = (form: string): PathedIssue[] => [
+    problem([], `expected ${form}, got ${show(record)}`, "invalid_type"),
+  ];
+  if (!isDenseArray(record)) {
+    return {
+      own: wholeRecord("an array of 3 elements or a [name, dtype] pair"),
+      nested: [],
+      named: false,
+    };
+  }
+  const nameProblem: PathedIssue[] =
+    typeof record[0] === "string" ? [] : [problem([0], "expected a string", "invalid_type")];
+  let own: PathedIssue[];
+  if (record.length === 3) {
+    const shape = record[2];
+    const shapeProblems: PathedIssue[] = [];
+    if (!isDenseArray(shape)) {
+      shapeProblems.push(problem([2], `expected an array, got ${show(shape)}`, "invalid_type"));
+    } else {
+      shape.forEach((length, axis) => {
+        if (!Number.isInteger(length)) {
+          shapeProblems.push(problem([2, axis], `expected an integer, got ${show(length)}`, "invalid_type"));
+        } else if ((length as number) < 0) {
+          shapeProblems.push(problem([2, axis], `expected an integer >= 0, got ${show(length)}`, "invalid_value"));
+        }
+      });
+    }
+    own = [...nameProblem, ...shapeProblems];
+    // The [name, dtype] form fails this record once, on its length; it wins
+    // only when the three-element reading has more problems than that.
+    if (own.length > 1) {
+      return { own: wholeRecord("a [name, dtype] pair"), nested: [], named: false };
+    }
+  } else if (record.length === 2 && nameProblem.length === 0) {
+    own = [];
+  } else {
+    // A two-element record with a bad name ties with the three-element
+    // reading, which comes first and fails on the length.
+    return { own: wholeRecord("an array of 3 elements"), nested: [], named: false };
+  }
+  const dtype = record[1];
+  return {
+    own,
+    nested: prefix(1, dtypeV2Problems(dtype, depth + 1)),
+    named: typeof dtype === "string" || Array.isArray(dtype),
+  };
 }
 
-/** Validate a v2 codec's required shape and JSON-valued configuration. */
-function validateCodecV2(value: unknown): PathedIssue[] {
-  if (!isCodecV2(value)) {
+/**
+ * Return every reason `value` is not shaped like a v2 codec configuration:
+ * an object with a non-empty string `id`, holding JSON.
+ */
+function codecV2Problems(value: unknown): PathedIssue[] {
+  if (!isPlainObject(value)) {
     return [problem([], "expected a codec configuration with a string 'id'", "invalid_type")];
   }
+  if (!has(value, "id")) return [problem(["id"], "missing required key", "missing_key")];
+  if (typeof value["id"] !== "string") {
+    return [problem(["id"], `expected a string codec id, got ${show(value["id"])}`, "invalid_type")];
+  }
+  if (value["id"] === "") return [problem(["id"], 'expected a codec id, got ""', "invalid_value")];
   return jsonProblems(value);
 }
 
 /**
- * Validate an `attributes` value: a JSON object.
+ * Validate an `attributes` value: an object of user data, where a
+ * non-finite number is allowed (see `userDataProblems`).
  *
  * Unlike the other validators (which return value-relative locs for the
  * caller to prefix), this emits the already-parent-relative `["attributes"]`
@@ -356,11 +557,11 @@ function validateCodecV2(value: unknown): PathedIssue[] {
  */
 function validateAttributes(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
-    return [problem(["attributes"], "expected a mapping with string keys", "invalid_type")];
+    return [problem(["attributes"], "expected an object with string keys", "invalid_type")];
   }
   const problems: PathedIssue[] = [];
   for (const [key, item] of Object.entries(value)) {
-    problems.push(...prefix("attributes", prefix(key, jsonProblems(item))));
+    append(problems, prefix("attributes", prefix(key, userDataProblems(item))));
   }
   return problems;
 }
@@ -373,21 +574,27 @@ function validateAttributes(value: unknown): PathedIssue[] {
  */
 function arrayMetadataV3Problems(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
-    return [problem([], "expected a mapping", "invalid_type")];
+    return [problem([], "expected an object", "invalid_type")];
   }
   const doc = value;
   const problems: PathedIssue[] = missingKeys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc);
-  problems.push(...validateExtensionFieldsV3(doc, ARRAY_METADATA_STANDARD_KEYS_V3));
-  problems.push(...checkLiteral(doc, "zarr_format", 3));
-  problems.push(...checkLiteral(doc, "node_type", "array"));
-  problems.push(...validateDimSequence(doc, "shape"));
+  append(problems, validateExtensionFieldsV3(doc, ARRAY_METADATA_STANDARD_KEYS_V3));
+  append(problems, checkLiteral(doc, "zarr_format", 3));
+  append(problems, checkLiteral(doc, "node_type", "array"));
+  append(problems, validateDimSequence(doc, "shape"));
   if (has(doc, "fill_value")) {
-    problems.push(...prefix("fill_value", jsonProblems(doc["fill_value"])));
+    append(problems, prefix("fill_value", jsonProblems(doc["fill_value"])));
   }
+  // Every extension point must be understood, so `must_understand: false`
+  // is refused at each one, codecs and storage transformers included:
+  // ignoring a codec gives wrong bytes just as ignoring a data type gives
+  // wrong values. It keeps its meaning on unknown top-level extension
+  // fields, which a reader really can skip.
   for (const key of ["data_type", "chunk_grid", "chunk_key_encoding"]) {
     if (has(doc, key)) {
-      problems.push(
-        ...prefix(
+      append(
+        problems,
+        prefix(
           key,
           metadataFieldV3Problems(doc[key], { allowMustUnderstandFalse: false }),
         ),
@@ -398,19 +605,27 @@ function arrayMetadataV3Problems(value: unknown): PathedIssue[] {
     if (has(doc, key)) {
       const entries = doc[key];
       if (!isDenseArray(entries)) {
-        problems.push(problem([key], "expected a sequence", "invalid_type"));
+        problems.push(problem([key], "expected an array", "invalid_type"));
       } else {
         if (key === "codecs" && entries.length === 0) {
-          problems.push(problem(["codecs"], "expected at least one codec", "invalid_value"));
+          problems.push(
+            problem(["codecs"], "expected an array -> bytes codec, got none", "invalid_value"),
+          );
         }
         entries.forEach((entry, index) => {
-          problems.push(...prefix(key, prefix(index, metadataFieldV3Problems(entry))));
+          append(
+            problems,
+            prefix(
+              key,
+              prefix(index, metadataFieldV3Problems(entry, { allowMustUnderstandFalse: false })),
+            ),
+          );
         });
       }
     }
   }
   if (has(doc, "attributes")) {
-    problems.push(...validateAttributes(doc["attributes"]));
+    append(problems, validateAttributes(doc["attributes"]));
   }
   if (has(doc, "dimension_names")) {
     // Simple typed sequences (dimension_names, shape, chunks) report a single
@@ -418,12 +633,17 @@ function arrayMetadataV3Problems(value: unknown): PathedIssue[] {
     // the metadata-field lists (codecs, storage_transformers).
     const names = doc["dimension_names"];
     if (!isDenseArray(names)) {
-      problems.push(problem(["dimension_names"], "expected a sequence", "invalid_type"));
+      problems.push(problem(["dimension_names"], "expected an array", "invalid_type"));
     } else if (!names.every((item) => item === null || typeof item === "string")) {
       problems.push(
-        problem(["dimension_names"], "expected items of str or None", "invalid_type"),
+        problem(["dimension_names"], "expected an array of strings or null", "invalid_type"),
       );
-    } else if (isIntSequence(doc["shape"]) && names.length !== doc["shape"].length) {
+    } else if (
+      // A shape with its own problem gives no number of dimensions to compare.
+      isIntSequence(doc["shape"]) &&
+      validateDimSequence(doc, "shape").length === 0 &&
+      names.length !== doc["shape"].length
+    ) {
       problems.push(
         problem(["dimension_names"], "expected one name per dimension of shape", "invalid_value"),
       );
@@ -433,56 +653,250 @@ function arrayMetadataV3Problems(value: unknown): PathedIssue[] {
 }
 
 
+const CONSOLIDATED_ENVELOPE_KEYS = ["kind", "must_understand", "metadata"] as const;
+
 /**
- * Return every reason `value` is not a valid inline consolidated envelope.
- *
- * Locs are value-relative (the caller prefixes with `consolidated_metadata`
- * where appropriate). Entries recurse into the array and group document
- * validators.
+ * Every reason `value` is not the envelope the core spec fixes for a group's
+ * `consolidated_metadata` member: `kind` is `"inline"`, `must_understand` is
+ * `false`, `metadata` is an object, and nothing else. Locs are
+ * value-relative. With `checkEntries`, each entry is checked as user data
+ * only, as a group document holds it.
  */
-function consolidatedMetadataV3Problems(value: unknown): PathedIssue[] {
-  return validateConsolidatedMetadataV3AtDepth(value, 0);
+function consolidatedEnvelopeProblems(value: unknown, checkEntries: boolean): PathedIssue[] {
+  if (!isPlainObject(value)) {
+    return [problem([], "expected an object", "invalid_type")];
+  }
+  const env = value;
+  const problems: PathedIssue[] = CONSOLIDATED_ENVELOPE_KEYS
+    .filter((key) => !(has(env, key)))
+    .map((key) => problem([key], "missing required key", "missing_key"));
+  append(problems, unexpectedKeys(CONSOLIDATED_ENVELOPE_KEYS, env));
+  append(problems, checkLiteral(env, "kind", "inline"));
+  append(problems, checkLiteral(env, "must_understand", false));
+  if (has(env, "metadata")) {
+    const entries = env["metadata"];
+    if (!isPlainObject(entries)) {
+      problems.push(problem(["metadata"], "expected an object", "invalid_type"));
+    } else if (checkEntries) {
+      for (const [key, entry] of Object.entries(entries)) {
+        append(problems, prefix("metadata", prefix(key, userDataProblems(entry))));
+      }
+    }
+  }
+  return problems;
 }
 
-function validateConsolidatedMetadataV3AtDepth(
-  value: unknown,
-  depth: number,
-): PathedIssue[] {
+type NodeTypeV3 = "array" | "group";
+
+/**
+ * The node type `value` declares, or, when it declares neither `"array"` nor
+ * `"group"` (or is not an object), the problems saying so. A document with
+ * no usable node type has its `zarr_format` checked too, so a document in
+ * another format is reported as not v3.
+ */
+function nodeTypeV3(value: unknown): { nodeType: NodeTypeV3 | undefined; problems: PathedIssue[] } {
+  if (!isPlainObject(value)) {
+    return { nodeType: undefined, problems: [problem([], "expected an object", "invalid_type")] };
+  }
+  const nodeType = value["node_type"];
+  if (nodeType === "array" || nodeType === "group") return { nodeType, problems: [] };
+  const problems = [...missingKeys(["zarr_format"], value), ...checkLiteral(value, "zarr_format", 3)];
+  problems.push(
+    has(value, "node_type")
+      ? outsideOf(["node_type"], nodeType, ["array", "group"])
+      : problem(["node_type"], "missing required key", "missing_key"),
+  );
+  return { nodeType: undefined, problems };
+}
+
+/** Each reason `name` is not a node name. Empty for a valid name, including the root's `""`. */
+function nameFaults(name: string): string[] {
+  const faults: string[] = [];
+  if (name.includes("/")) faults.push('holds "/"');
+  if (name !== "" && /^\.+$/.test(name)) faults.push("is periods alone");
+  if (name.startsWith("__")) faults.push('starts with the reserved "__"');
+  if (name === "zarr.json") faults.push('is the reserved "zarr.json"');
+  return faults;
+}
+
+/** Each reason `path` is not a node path. Empty for a valid path, including the root's `/`. */
+function pathFaults(path: string): string[] {
+  if (path === "/") return [];
+  if (!path.startsWith("/")) return ['does not start with "/"'];
+  const faults: string[] = [];
+  const names = path.slice(1).split("/");
+  if (path.endsWith("/")) {
+    faults.push('ends with "/"');
+    names.pop();
+  }
+  const faulty = names.filter((name) => name === "" || nameFaults(name).length > 0);
+  if (faulty.length > 0) {
+    const first = faulty[0] as string;
+    faults.push(
+      first === ""
+        ? 'holds an empty name between two "/"'
+        : `holds ${show(first)}, a name that ${nameFaults(first).join(" and ")}`,
+    );
+    if (faulty.length > 1) faults.push(`holds ${faulty.length - 1} more invalid names`);
+  }
+  return faults;
+}
+
+/** Each reason `key` is not the path of a node below a group, relative to that group. */
+function belowFaults(key: string): string[] {
+  if (key === "") return ["is the group's own"];
+  if (key.startsWith("/")) return ['starts with "/"'];
+  return pathFaults(`/${key}`);
+}
+
+/**
+ * Why `nodes` (the node type of each node by path; `null` for unknown, which
+ * counts as a group) is not a tree: a node below an array is an
+ * `invalid_value` at the node, and the nearest missing group above a node
+ * is reported once, as a `missing_key` at that group's path. Locs are the
+ * node paths themselves; the caller maps them into the document.
+ */
+function treeProblems(nodes: ReadonlyMap<string, NodeTypeV3 | null>): Array<{ path: string; message: string; kind: IssueKind }> {
+  const found: Array<{ path: string; message: string; kind: IssueKind }> = [];
+  const reported = new Set<string>();
+  for (const path of nodes.keys()) {
+    if (path === "/") continue;
+    const names = path.slice(1).split("/");
+    let holder: NodeTypeV3 | undefined;
+    let holderPath = "/";
+    let heldDepth = -1;
+    for (let depth = 0; depth < names.length; depth++) {
+      const ancestor = depth === 0 ? "/" : `/${names.slice(0, depth).join("/")}`;
+      if (nodes.has(ancestor)) {
+        holder = nodes.get(ancestor) ?? "group";
+        holderPath = ancestor;
+        heldDepth = depth;
+      }
+    }
+    const missing = names.length - 1 - heldDepth;
+    if (holder === "array") {
+      found.push({
+        path,
+        message: `expected a node below a group, got ${show(path)}, below the array ${show(holderPath)}`,
+        kind: "invalid_value",
+      });
+    } else if (missing !== 0) {
+      const nearest = path.slice(0, path.lastIndexOf("/")) || "/";
+      if (!reported.has(nearest)) {
+        reported.add(nearest);
+        const above = missing - 1;
+        found.push({
+          path: nearest,
+          message:
+            `missing the group holding ${show(path)}` +
+            (above === 0 ? "" : `, and ${above} group${above === 1 ? "" : "s"} above it`),
+          kind: "missing_key",
+        });
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * Every structural reason the documents an inline `consolidated_metadata`
+ * member lists are not valid, without the envelope's own problems. Each
+ * entry is keyed by a node path below the group and is a complete array or
+ * group document; together with the group they form a hierarchy rooted at
+ * it. A listed group that lists documents of its own (and has no problem
+ * of its own) has its listing read the same way, and every node it lists
+ * must also be listed by the outer group, with the same node type.
+ */
+function consolidatedEntriesV3Problems(value: unknown, depth: number): PathedIssue[] {
   // The group <-> consolidated document recursion consumes native stack per
   // level, so it carries the same depth budget as the JSON-value walk.
   if (depth >= MAX_JSON_DEPTH) {
     return [problem([], `maximum nesting depth of ${MAX_JSON_DEPTH} exceeded`, "invalid_value")];
   }
-  if (!isPlainObject(value)) {
-    return [problem([], "expected a mapping", "invalid_type")];
-  }
-  const env = value;
-  const problems: PathedIssue[] = ["kind", "must_understand", "metadata"]
-    .filter((key) => !(has(env, key)))
-    .map((key) => problem([key], "missing required key", "missing_key"));
-  problems.push(...unexpectedKeys(["kind", "must_understand", "metadata"], env));
-  problems.push(...checkLiteral(env, "kind", "inline"));
-  if (has(env, "must_understand") && env["must_understand"] !== false) {
-    problems.push(problem(["must_understand"], "expected False", "invalid_value"));
-  }
-  if (has(env, "metadata")) {
-    const entries = env["metadata"];
-    if (!isPlainObject(entries)) {
-      problems.push(problem(["metadata"], "expected a mapping", "invalid_type"));
-    } else {
-      for (const [key, entry] of Object.entries(entries)) {
-        const nodeType = isPlainObject(entry) ? entry["node_type"] : undefined;
-        if (nodeType === "array") {
-          problems.push(...prefix("metadata", prefix(key, arrayMetadataV3Problems(entry))));
-        } else if (nodeType === "group") {
-          problems.push(
-            ...prefix("metadata", prefix(key, validateGroupMetadataV3AtDepth(entry, depth + 1))),
-          );
-        } else {
-          problems.push(
-            problem(["metadata", key, "node_type"], "expected 'array' or 'group'", "invalid_value"),
-          );
+  if (!isPlainObject(value) || !isPlainObject(value["metadata"])) return [];
+  const entries = value["metadata"];
+  const problems: PathedIssue[] = [];
+  const nodeTypes = new Map<string, NodeTypeV3 | null>();
+  const listings = new Map<string, Record<string, unknown>>();
+  for (const [key, entry] of Object.entries(entries)) {
+    const faults = belowFaults(key);
+    if (faults.length > 0) {
+      problems.push(
+        problem(
+          ["metadata", key],
+          `expected the path of a node below the group, got ${show(key)}, which ${faults.join(" and ")}`,
+          "invalid_value",
+        ),
+      );
+    }
+    const { nodeType, problems: typeProblems } = nodeTypeV3(entry);
+    let entryProblems = typeProblems;
+    if (nodeType === undefined && isPlainObject(entry)) {
+      // A document that is no node is still checked as the user data a
+      // group document holds, apart from the members already judged.
+      for (const [member, value] of Object.entries(entry)) {
+        if (member !== "zarr_format" && member !== "node_type") {
+          append(entryProblems, prefix(member, userDataProblems(value)));
         }
+      }
+    }
+    if (nodeType === "array") {
+      entryProblems = arrayMetadataV3Problems(entry);
+    } else if (nodeType === "group") {
+      entryProblems = groupMetadataV3Problems(entry);
+      const nested = (entry as Record<string, unknown>)[ZARR_V3_CONSOLIDATED_METADATA_KEY];
+      if (entryProblems.length === 0 && nested !== undefined) {
+        entryProblems = prefix(
+          ZARR_V3_CONSOLIDATED_METADATA_KEY,
+          consolidatedEntriesV3Problems(nested, depth + 1),
+        );
+        listings.set(key, (nested as { metadata: Record<string, unknown> }).metadata);
+      }
+    }
+    append(problems, prefix("metadata", prefix(key, entryProblems)));
+    if (faults.length === 0) nodeTypes.set(key, nodeType ?? null);
+  }
+  const nodes = new Map<string, NodeTypeV3 | null>([["/", "group"]]);
+  for (const [key, nodeType] of nodeTypes) nodes.set(`/${key}`, nodeType);
+  for (const found of treeProblems(nodes)) {
+    problems.push(problem(["metadata", found.path.slice(1)], found.message, found.kind));
+  }
+  for (const [key, listing] of listings) {
+    if (!nodeTypes.has(key)) continue; // a key that is no node path lists nothing
+    for (const [path, entry] of Object.entries(listing)) {
+      if (belowFaults(path).length > 0) continue; // the nested read reports it
+      const joined = `${key}/${path}`;
+      const here = ["metadata", key, ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", path];
+      if (!nodeTypes.has(joined)) {
+        problems.push(
+          problem(
+            here,
+            `expected a node the group lists, got ${show(`/${joined}`)}, which ${show(`/${key}`)} lists alone`,
+            "invalid_value",
+          ),
+        );
+        continue;
+      }
+      const flat = nodeTypes.get(joined);
+      const nested = nodeTypeV3(entry).nodeType;
+      if (flat !== null && flat !== undefined && nested !== undefined && flat !== nested) {
+        problems.push(
+          problem(
+            here,
+            `expected ${flat === "array" ? "an array" : "a group"}, as the group lists ${show(`/${joined}`)}, got ${nested === "array" ? "an array" : "a group"}`,
+            "invalid_value",
+          ),
+        );
+      } else if (flat === "group" && nested === "group" && !groupsReadAlike(entries[joined], entry)) {
+        // Two listings of one node must agree. Arrays are not compared here:
+        // the reference implementation compares their canonical spellings.
+        problems.push(
+          problem(
+            here,
+            `expected the document the group lists at ${show(`/${joined}`)}, got one that reads otherwise: one node, one document`,
+            "invalid_value",
+          ),
+        );
       }
     }
   }
@@ -490,42 +904,81 @@ function validateConsolidatedMetadataV3AtDepth(
 }
 
 /**
+ * `value` as JSON text with object keys sorted, so two values written alike
+ * compare equal. A non-finite number is written as its own token, as
+ * Python's `json` module writes it, so `NaN` and `null` stay apart.
+ */
+function sortedJson(value: unknown): string {
+  if (typeof value === "number" && !Number.isFinite(value)) return String(value);
+  if (Array.isArray(value)) return `[${value.map(sortedJson).join(",")}]`;
+  if (isPlainObject(value)) {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${sortedJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * Whether two listings of one group read the same: the same attributes and
+ * the same extra fields, each group's own listing aside. Only two groups
+ * without problems of their own are compared.
+ */
+function groupsReadAlike(one: unknown, other: unknown): boolean {
+  if (groupMetadataV3Problems(one).length > 0 || groupMetadataV3Problems(other).length > 0) return true;
+  const spec = [...GROUP_METADATA_STANDARD_KEYS_V3, ZARR_V3_CONSOLIDATED_METADATA_KEY] as string[];
+  const key = (doc: Record<string, unknown>): string => {
+    // fromEntries keeps a "__proto__" member as an own key.
+    const extra = Object.fromEntries(Object.entries(doc).filter(([member]) => !spec.includes(member)));
+    return sortedJson([doc["attributes"] ?? {}, extra]);
+  };
+  return key(one as Record<string, unknown>) === key(other as Record<string, unknown>);
+}
+
+/**
+ * Return every reason `value` is not a valid inline `consolidated_metadata`
+ * member: its envelope, and each document it lists, read as a v3 array or
+ * group document. Locs are value-relative.
+ */
+function consolidatedMetadataV3Problems(value: unknown): PathedIssue[] {
+  return [
+    ...consolidatedEnvelopeProblems(value, false),
+    ...consolidatedEntriesV3Problems(value, 0),
+  ];
+}
+
+/**
  * Return every reason `value` is not a structurally-valid v3 group doc.
  *
  * Checks structure, not domain validity. Unknown top-level keys are allowed
- * (extension fields); a `consolidated_metadata` key, if present, is
- * deep-validated (envelope and entries).
+ * (extension fields). A `consolidated_metadata` member, if present, is
+ * checked against the envelope the core spec fixes; the documents it lists
+ * are checked as user data only (`validateConsolidatedMetadataV3` reads
+ * them). Without `checkEntries`, not even that: for a caller that reads the
+ * listed documents itself, so a problem in one is reported once.
  */
-function groupMetadataV3Problems(value: unknown): PathedIssue[] {
-  return validateGroupMetadataV3AtDepth(value, 0);
-}
-
-function validateGroupMetadataV3AtDepth(value: unknown, depth: number): PathedIssue[] {
+function groupMetadataV3Problems(value: unknown, checkEntries = true): PathedIssue[] {
   if (!isPlainObject(value)) {
-    return [problem([], "expected a mapping", "invalid_type")];
+    return [problem([], "expected an object", "invalid_type")];
   }
   const doc = value;
   const problems: PathedIssue[] = missingKeys(GROUP_METADATA_REQUIRED_KEYS_V3, doc);
-  problems.push(
-    ...validateExtensionFieldsV3(doc, GROUP_METADATA_STANDARD_KEYS_V3, [
+  append(
+    problems,
+    validateExtensionFieldsV3(doc, GROUP_METADATA_STANDARD_KEYS_V3, [
       ZARR_V3_CONSOLIDATED_METADATA_KEY,
     ]),
   );
-  problems.push(...checkLiteral(doc, "zarr_format", 3));
-  problems.push(...checkLiteral(doc, "node_type", "group"));
+  append(problems, checkLiteral(doc, "zarr_format", 3));
+  append(problems, checkLiteral(doc, "node_type", "group"));
   if (has(doc, "attributes")) {
-    problems.push(...validateAttributes(doc["attributes"]));
+    append(problems, validateAttributes(doc["attributes"]));
   }
-  if (
-    has(doc, ZARR_V3_CONSOLIDATED_METADATA_KEY) &&
-    doc[ZARR_V3_CONSOLIDATED_METADATA_KEY] !== null
-  ) {
-    // consolidated_metadata: null (a historical zarr-python bug) is
-    // structurally accepted so those stores remain readable.
-    problems.push(
-      ...prefix(
+  if (has(doc, ZARR_V3_CONSOLIDATED_METADATA_KEY)) {
+    append(
+      problems,
+      prefix(
         ZARR_V3_CONSOLIDATED_METADATA_KEY,
-        validateConsolidatedMetadataV3AtDepth(doc[ZARR_V3_CONSOLIDATED_METADATA_KEY], depth + 1),
+        consolidatedEnvelopeProblems(doc[ZARR_V3_CONSOLIDATED_METADATA_KEY], checkEntries),
       ),
     );
   }
@@ -539,44 +992,54 @@ function validateGroupMetadataV3AtDepth(value: unknown, depth: number): PathedIs
  *
  * Dispatches on `node_type`: `"array"` and `"group"` route to the
  * corresponding document validator; anything else is itself the problem.
- * This dispatcher has no direct Python analog (consumers there pick a
- * validator per node type); it exists for consumers handed an arbitrary
- * `zarr.json`, like editor tooling.
+ * A group's inline consolidated metadata is read in full: each document it
+ * lists is checked as `validateConsolidatedMetadataV3` checks it, pathed
+ * through `consolidated_metadata`. That is where this dispatcher differs
+ * from the reference implementation's node reader, which leaves the listed
+ * documents to its consolidated metadata reader; it exists for consumers
+ * handed an arbitrary `zarr.json`, like editor tooling.
  */
 function metadataV3Problems(value: unknown): PathedIssue[] {
-  if (!isPlainObject(value)) {
-    return [problem([], "expected a mapping", "invalid_type")];
-  }
-  const nodeType = value["node_type"];
+  const { nodeType, problems } = nodeTypeV3(value);
   if (nodeType === "array") return arrayMetadataV3Problems(value);
-  if (nodeType === "group") return groupMetadataV3Problems(value);
-  if (!(has(value, "node_type"))) {
-    return [problem(["node_type"], "missing required key", "missing_key")];
+  if (nodeType === "group") {
+    const doc = value as Record<string, unknown>;
+    return [
+      ...groupMetadataV3Problems(doc, false),
+      ...prefix(
+        ZARR_V3_CONSOLIDATED_METADATA_KEY,
+        consolidatedEntriesV3Problems(doc[ZARR_V3_CONSOLIDATED_METADATA_KEY], 0),
+      ),
+    ];
   }
-  return [
-    problem(["node_type"], `expected 'array' or 'group', got ${show(nodeType)}`, "invalid_value"),
-  ];
+  return problems;
 }
 
 /**
  * Return every reason `value` is not a structurally-valid v2 array doc.
  *
- * Checks structure, not domain validity: `dtype` must be a string or field
- * records, but the string content is not interpreted; `compressor` and
- * `filters` are required keys that may be `null`, and otherwise must be
- * codec configurations (objects with a string `id`).
+ * Checks structure, not domain validity: `dtype` must be a typestr or field
+ * records, but which typestrs name real types is not checked; `compressor`
+ * and `filters` are required keys that may be `null`, and otherwise must be
+ * codec configurations (objects with a string `id`). Members the spec does
+ * not define are accepted when they are JSON: other keys "SHOULD NOT be
+ * present ... and SHOULD be ignored", unlike `.zgroup`'s "MUST NOT".
  */
 function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
-    return [problem([], "expected a mapping", "invalid_type")];
+    return [problem([], "expected an object", "invalid_type")];
   }
   const doc = value;
   const problems: PathedIssue[] = missingKeys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc);
-  problems.push(...unexpectedKeys(ARRAY_METADATA_STANDARD_KEYS_V2, doc));
-  problems.push(...checkLiteral(doc, "zarr_format", 2));
+  for (const [key, item] of Object.entries(doc)) {
+    if (!(ARRAY_METADATA_STANDARD_KEYS_V2 as readonly string[]).includes(key)) {
+      append(problems, prefix(key, jsonProblems(item)));
+    }
+  }
+  append(problems, checkLiteral(doc, "zarr_format", 2));
   const shapeProblems = validateDimSequence(doc, "shape");
   const chunksProblems = validateDimSequence(doc, "chunks");
-  problems.push(...shapeProblems, ...chunksProblems);
+  append(problems, shapeProblems, chunksProblems);
   if (
     shapeProblems.length === 0 &&
     chunksProblems.length === 0 &&
@@ -588,35 +1051,26 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
       problem(["chunks"], "expected the same number of dimensions as shape", "invalid_value"),
     );
   }
-  if (has(doc, "dtype") && !isDtypeV2(doc["dtype"])) {
-    problems.push(
-      problem(["dtype"], "expected a v2 dtype string or a sequence of field records", "invalid_type"),
-    );
+  if (has(doc, "dtype")) {
+    append(problems, prefix("dtype", dtypeV2Problems(doc["dtype"])));
   }
   if (has(doc, "order") && !(ZARR_V2_ARRAY_ORDER as readonly unknown[]).includes(doc["order"])) {
-    problems.push(
-      problem(["order"], `expected 'C' or 'F', got ${show(doc["order"])}`, "invalid_value"),
-    );
+    problems.push(outsideOf(["order"], doc["order"], ZARR_V2_ARRAY_ORDER));
   }
   if (has(doc, "compressor") && doc["compressor"] !== null) {
-    problems.push(...prefix("compressor", validateCodecV2(doc["compressor"])));
+    append(problems, prefix("compressor", codecV2Problems(doc["compressor"])));
   }
   if (has(doc, "filters")) {
     const filters = doc["filters"];
-    if (filters !== null && (!isDenseArray(filters) || !filters.every(isCodecV2))) {
+    if (filters !== null && !isDenseArray(filters)) {
       problems.push(
-        problem(
-          ["filters"],
-          "expected null or a sequence of codec configurations with string 'id's",
-          "invalid_type",
-        ),
+        problem(["filters"], "expected null or an array of codec configurations", "invalid_type"),
       );
-    } else if (filters !== null && isDenseArray(filters)) {
-      if (filters.length === 0) {
-        problems.push(problem(["filters"], "expected at least one filter", "invalid_value"));
-      }
+    } else if (filters !== null) {
+      // "a list of JSON objects providing codec configurations, or null"
+      // sets no minimum, so an empty list is a pipeline with no filters.
       filters.forEach((item, index) => {
-        problems.push(...prefix("filters", prefix(index, jsonProblems(item))));
+        append(problems, prefix("filters", prefix(index, codecV2Problems(item))));
       });
     }
   }
@@ -625,18 +1079,14 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
     !(ZARR_V2_ARRAY_DIMENSION_SEPARATOR as readonly unknown[]).includes(doc["dimension_separator"])
   ) {
     problems.push(
-      problem(
-        ["dimension_separator"],
-        `expected '.' or '/', got ${show(doc["dimension_separator"])}`,
-        "invalid_value",
-      ),
+      outsideOf(["dimension_separator"], doc["dimension_separator"], ZARR_V2_ARRAY_DIMENSION_SEPARATOR),
     );
   }
   if (has(doc, "fill_value")) {
-    problems.push(...prefix("fill_value", jsonProblems(doc["fill_value"])));
+    append(problems, prefix("fill_value", jsonProblems(doc["fill_value"])));
   }
   if (has(doc, "attributes")) {
-    problems.push(...validateAttributes(doc["attributes"]));
+    append(problems, validateAttributes(doc["attributes"]));
   }
   return problems;
 }
@@ -646,52 +1096,159 @@ function arrayMetadataV2Problems(value: unknown): PathedIssue[] {
  * Return every reason `value` is not a structurally-valid v2 group doc.
  *
  * Validates the in-memory merged form: the `.zgroup` fields plus an optional
- * `attributes` mapping folded in from `.zattrs`.
+ * `attributes` mapping folded in from `.zattrs`. Other keys "MUST NOT be
+ * present", so each one is an `unknown_key`.
  */
 function groupMetadataV2Problems(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
-    return [problem([], "expected a mapping", "invalid_type")];
+    return [problem([], "expected an object", "invalid_type")];
   }
   const doc = value;
   const problems: PathedIssue[] = missingKeys(GROUP_METADATA_REQUIRED_KEYS_V2, doc);
-  problems.push(...unexpectedKeys(GROUP_METADATA_STANDARD_KEYS_V2, doc));
-  problems.push(...checkLiteral(doc, "zarr_format", 2));
+  append(problems, unexpectedKeys(GROUP_METADATA_STANDARD_KEYS_V2, doc));
+  append(problems, checkLiteral(doc, "zarr_format", 2));
   if (has(doc, "attributes")) {
-    problems.push(...validateAttributes(doc["attributes"]));
+    append(problems, validateAttributes(doc["attributes"]));
   }
   return problems;
 }
 
+const NODE_FILES_V2 = [".zarray", ".zgroup", ".zattrs"] as const;
+
+/**
+ * Every structural reason the entries of a `.zmetadata` document (whose own
+ * envelope and entries are already JSON) do not hold valid v2 nodes. Each
+ * `.zarray` or `.zgroup` entry is read as that document merged with its
+ * sibling `.zattrs`, with the attributes' problems located under the
+ * `.zattrs` entry; an `attributes` member written in the file itself is a
+ * problem, since on disk attributes live in `.zattrs`. A path may hold one
+ * node, of one type, and the nodes form a hierarchy rooted at the group
+ * the document consolidates. Other entries are left alone.
+ */
+function consolidatedEntriesV2Problems(entries: Record<string, unknown>): PathedIssue[] {
+  const problems: PathedIssue[] = [];
+  const byPath = new Map<string, Map<string, string>>();
+  for (const key of Object.keys(entries)) {
+    const cut = key.lastIndexOf("/");
+    const name = key.slice(cut + 1);
+    if (!(NODE_FILES_V2 as readonly string[]).includes(name)) continue;
+    const segments = (cut < 0 ? "" : key.slice(0, cut)).split("/").filter((part) => part !== "");
+    if (segments.some((part) => part === "." || part === "..")) {
+      problems.push(
+        problem(
+          ["metadata", key],
+          `expected the path of a node, got ${show(key)}, which has a '.' or '..' segment`,
+          "invalid_value",
+        ),
+      );
+      continue;
+    }
+    const path = segments.join("/");
+    const files = byPath.get(path) ?? new Map<string, string>();
+    byPath.set(path, files);
+    const seen = files.get(name);
+    if (seen !== undefined) {
+      problems.push(
+        problem(
+          ["metadata", key],
+          `a second ${name} for the node at ${show(path)}, which ${show(seen)} is`,
+          "invalid_value",
+        ),
+      );
+      continue;
+    }
+    files.set(name, key);
+  }
+  for (const [path, files] of byPath) {
+    const zarray = files.get(".zarray");
+    const zgroup = files.get(".zgroup");
+    const zattrs = files.get(".zattrs");
+    if (zarray !== undefined && zgroup !== undefined) {
+      problems.push(
+        problem(
+          ["metadata", zgroup],
+          `a node is an array or a group, not both: a .zarray is at ${show(path)} too`,
+          "invalid_value",
+        ),
+      );
+      continue;
+    }
+    const key = zarray ?? zgroup;
+    if (key === undefined) continue; // a .zattrs alone forms no node
+    const document = entries[key];
+    if (!isPlainObject(document)) {
+      problems.push(problem(["metadata", key], `expected an object, got ${show(document)}`, "invalid_type"));
+      continue;
+    }
+    const merged: Record<string, unknown> = { ...document };
+    if (has(merged, "attributes")) {
+      problems.push(
+        problem(
+          ["metadata", key, "attributes"],
+          `unexpected key "attributes" in ${zarray !== undefined ? ".zarray" : ".zgroup"}: ` +
+            "attributes belong in .zattrs",
+          zarray !== undefined ? "invalid_value" : "unknown_key",
+        ),
+      );
+      delete merged["attributes"];
+    }
+    if (zattrs !== undefined) merged["attributes"] = entries[zattrs];
+    const found = zarray !== undefined ? arrayMetadataV2Problems(merged) : groupMetadataV2Problems(merged);
+    for (const issue of found) {
+      problems.push(
+        zattrs !== undefined && issue.path[0] === "attributes"
+          ? { ...issue, path: ["metadata", zattrs, ...issue.path.slice(1)] }
+          : { ...issue, path: ["metadata", key, ...issue.path] },
+      );
+    }
+  }
+  // The root is a group unless an entry says otherwise: a `.zmetadata`
+  // does not have to list its own `.zgroup`.
+  const nodes = new Map<string, NodeTypeV3 | null>([["/", "group"]]);
+  for (const [path, files] of byPath) {
+    if (files.has(".zarray")) nodes.set(`/${path}`, "array");
+    else if (files.has(".zgroup")) nodes.set(`/${path}`, "group");
+  }
+  for (const found of treeProblems(nodes)) {
+    const path = found.path.slice(1);
+    const files = byPath.get(path);
+    const key =
+      files?.get(".zarray") ?? files?.get(".zgroup") ?? (path === "" ? ".zgroup" : `${path}/.zgroup`);
+    problems.push(problem(["metadata", key], found.message, found.kind));
+  }
+  return problems;
+}
 
 /**
  * Return every reason `value` is not a structurally-valid `.zmetadata` doc
- * (v2 consolidated metadata).
- *
- * Ported from `ZarrV2ConsolidatedMetadata.from_json` in the Python reference
- * implementation. Entries are validated as JSON trees, not as per-node
- * documents: which nodes had a `.zattrs` file at all is information the
- * canonical representation must keep, and interpreting entries into node
- * documents is consumer work.
+ * (v2 consolidated metadata): its envelope, each entry as JSON (a `.zattrs`
+ * entry as attributes), and, when all of that holds, the nodes its entries
+ * describe, as `consolidatedEntriesV2Problems` reads them.
  */
 function consolidatedMetadataV2Problems(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
-    return [problem([], "expected a mapping", "invalid_type")];
+    return [problem([], "expected an object", "invalid_type")];
   }
   const doc = value;
   const problems: PathedIssue[] = ["zarr_consolidated_format", "metadata"]
     .filter((key) => !(has(doc, key)))
     .map((key) => problem([key], "missing required key", "missing_key"));
-  problems.push(...unexpectedKeys(["zarr_consolidated_format", "metadata"], doc));
-  problems.push(...checkLiteral(doc, "zarr_consolidated_format", 1));
+  append(problems, unexpectedKeys(["zarr_consolidated_format", "metadata"], doc));
+  append(problems, checkLiteral(doc, "zarr_consolidated_format", 1));
+  const entries = doc["metadata"];
   if (has(doc, "metadata")) {
-    const entries = doc["metadata"];
     if (!isPlainObject(entries)) {
-      problems.push(problem(["metadata"], "expected a mapping with string keys", "invalid_type"));
+      problems.push(problem(["metadata"], "expected an object with string keys", "invalid_type"));
     } else {
       for (const [key, item] of Object.entries(entries)) {
-        problems.push(...prefix("metadata", prefix(key, jsonProblems(item))));
+        const attributes = key.slice(key.lastIndexOf("/") + 1) === ".zattrs";
+        append(problems, prefix("metadata", prefix(key, (attributes ? userDataProblems : jsonProblems)(item))));
       }
     }
+  }
+  // The nodes are read only from a document whose envelope and entries hold.
+  if (problems.length === 0 && isPlainObject(entries)) {
+    append(problems, consolidatedEntriesV2Problems(entries));
   }
   return problems;
 }
@@ -723,6 +1280,94 @@ function storeGet(mapping: StoreMapping, key: string): Uint8Array | string | und
   return Object.hasOwn(record, key) ? record[key] : undefined;
 }
 
+const NON_FINITE_TOKENS = ["-Infinity", "Infinity", "NaN"] as const;
+const NON_FINITE_VALUES: Record<(typeof NON_FINITE_TOKENS)[number], number> = {
+  "-Infinity": -Infinity,
+  Infinity: Infinity,
+  NaN: NaN,
+};
+
+/** A marker string for one non-finite token, unique to one parse or write. */
+function nonFiniteMark(nonce: string, token: string): string {
+  return `\u0000zarr-metadata-${nonce}-${token}`;
+}
+
+function freshNonce(text: string): string {
+  let nonce = Math.random().toString(36).slice(2);
+  while (text.includes(nonce)) nonce = Math.random().toString(36).slice(2);
+  return nonce;
+}
+
+/**
+ * Parse JSON text that may hold the bare tokens `NaN`, `Infinity` and
+ * `-Infinity`, as Python's `json` module writes and reads them. Each token
+ * outside a string becomes the number it names; anything else that is not
+ * RFC 8259 JSON still fails, with `JSON.parse`'s own message.
+ */
+function parseJsonText(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const nonce = freshNonce(text);
+    // The text is copied in runs between the tokens it replaces, so a large
+    // document is not rebuilt one character at a time.
+    const pieces: string[] = [];
+    let runStart = 0;
+    let index = 0;
+    scan: while (index < text.length) {
+      if (text[index] === '"') {
+        index += 1;
+        while (index < text.length && text[index] !== '"') index += text[index] === "\\" ? 2 : 1;
+        index += 1;
+        continue;
+      }
+      for (const token of NON_FINITE_TOKENS) {
+        if (text.startsWith(token, index)) {
+          pieces.push(text.slice(runStart, index), JSON.stringify(nonFiniteMark(nonce, token)));
+          index += token.length;
+          runStart = index;
+          continue scan;
+        }
+      }
+      index += 1;
+    }
+    if (pieces.length === 0) throw error;
+    pieces.push(text.slice(runStart));
+    const out = pieces.join("");
+    const marks = new Map<unknown, number>(
+      NON_FINITE_TOKENS.map((token) => [nonFiniteMark(nonce, token), NON_FINITE_VALUES[token]]),
+    );
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(out, (_key, value: unknown) => marks.get(value) ?? value);
+    } catch {
+      throw error;
+    }
+    // A token where an object key belongs (`{NaN: 1}`) became a key, which
+    // the reviver never sees; such text is not JSON either way.
+    if (holdsKeyWith(parsed, nonce)) throw error;
+    return parsed;
+  }
+}
+
+/** Whether any object key inside `value` contains `fragment`. */
+function holdsKeyWith(value: unknown, fragment: string): boolean {
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const item = pending.pop();
+    if (Array.isArray(item)) {
+      // One push per element: spreading a large array overflows the stack.
+      for (const entry of item) pending.push(entry);
+    } else if (typeof item === "object" && item !== null) {
+      for (const [key, entry] of Object.entries(item)) {
+        if (key.includes(fragment)) return true;
+        pending.push(entry);
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Decode the JSON document stored at `key` in `mapping`.
  *
@@ -730,8 +1375,14 @@ function storeGet(mapping: StoreMapping, key: string): Uint8Array | string | und
  * failure surfaces as `MetadataValidationError`: a missing store key is a
  * `missing_key` problem and undecodable bytes or malformed JSON are an
  * `invalid_json` problem, rather than leaking a decode exception to
- * callers. `JSON.parse` already rejects the non-standard `NaN`/`Infinity`
- * constants Python has to opt out of explicitly.
+ * callers.
+ *
+ * The bare tokens `NaN`, `Infinity` and `-Infinity`, which zarr-python
+ * writes in attributes with the defaults of Python's `json` module, are
+ * read as the numbers they name, as the reference implementation reads
+ * them. The document validators then accept them where the reference
+ * does (attributes and other user data) and report each one anywhere else
+ * at its location, instead of the whole document failing to decode.
  *
  * One intentional divergence: bytes must be UTF-8 (RFC 8259's mandated
  * interchange encoding). Python's `json.loads` auto-detects UTF-16/32 and
@@ -745,7 +1396,7 @@ export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
   try {
     const text =
       typeof raw === "string" ? raw : new TextDecoder("utf-8", { fatal: true }).decode(raw);
-    return JSON.parse(text);
+    return parseJsonText(text);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new MetadataValidationError(
@@ -754,21 +1405,47 @@ export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
   }
 }
 
+/** `JSON.stringify`, but writing each non-finite number as the bare token Python's `json` module writes. */
+function stringifyNonFinite(value: unknown, indent: number | string | undefined): string {
+  const nonce = freshNonce("");
+  const text = JSON.stringify(
+    value,
+    (_key, item: unknown) => {
+      if (typeof item !== "number" || Number.isFinite(item)) return item;
+      return nonFiniteMark(nonce, Number.isNaN(item) ? "NaN" : item > 0 ? "Infinity" : "-Infinity");
+    },
+    indent,
+  );
+  let out = text;
+  for (const token of NON_FINITE_TOKENS) {
+    out = out.split(JSON.stringify(nonFiniteMark(nonce, token))).join(token);
+  }
+  return out;
+}
+
 /**
- * Encode a metadata document as strict RFC 8259 JSON bytes.
+ * Encode a metadata document as JSON bytes.
  *
- * Ported from the Python reference's `dump_store_json` (`allow_nan=False`):
- * a non-JSON value — a non-finite number, a `Map`, a `BigInt` — throws
+ * Ported from the Python reference's `dump_store_json`: a non-JSON value —
+ * a `Map`, a `BigInt`, a non-finite number — throws
  * `MetadataValidationError` instead of being silently rewritten to `null`
- * the way bare `JSON.stringify` would.
+ * the way bare `JSON.stringify` would. With `allowNonFinite`, a non-finite
+ * number is written as the bare token `NaN`, `Infinity` or `-Infinity`
+ * instead, as zarr-python writes attributes; validate the document first,
+ * so such numbers remain only where the reference implementation reads
+ * them (attributes and other user data).
  */
 export function dumpStoreJson(
   value: unknown,
-  options: { indent?: number | string } = {},
+  options: { indent?: number | string; allowNonFinite?: boolean } = {},
 ): Uint8Array {
-  const problems = jsonProblems(value);
+  const problems = options.allowNonFinite === true ? userDataProblems(value) : jsonProblems(value);
   if (problems.length > 0) throw new MetadataValidationError(treeOf(problems));
-  return new TextEncoder().encode(JSON.stringify(value, null, options.indent));
+  const text =
+    options.allowNonFinite === true
+      ? stringifyNonFinite(value, options.indent)
+      : JSON.stringify(value, null, options.indent);
+  return new TextEncoder().encode(text);
 }
 
 // ---------------------------------------------------------------------------
@@ -970,51 +1647,20 @@ export function mustUnderstandExtensionFieldsV3(value: unknown): string[] {
 }
 
 /**
- * Per-entry document validation for `.zmetadata` (v2 consolidated) — the
- * consumer-side interpretation the reference implementation's model
- * deliberately leaves out (its `metadata` map is kept verbatim). Each entry
- * is validated by what its key names: `<path>/.zarray` as an on-disk v2
- * array document, `<path>/.zgroup` as an on-disk v2 group document (both
- * additionally rejecting an `attributes` member, which on disk lives only
- * in the sibling `.zattrs` file), and `<path>/.zattrs` as a JSON object.
- * Keys naming none of the three are left alone.
+ * The node problems of a `.zmetadata` document's entries: each `.zarray`
+ * and `.zgroup` entry read as an on-disk document merged with its sibling
+ * `.zattrs`, and the hierarchy they form.
  *
- * This is a TS-only layer over `validateConsolidatedMetadataV2` (which
- * stays envelope-only for conformance-corpus parity with Python); run both.
+ * @deprecated `validateConsolidatedMetadataV2` now reads the entries too,
+ * as the reference implementation does, and reports these same problems
+ * whenever the envelope and entries are JSON. This function reports them
+ * even when the envelope has problems of its own. Unlike earlier releases,
+ * a `.zattrs` entry with no `.zarray` or `.zgroup` beside it forms no node
+ * and is not checked to be an object, as in the reference implementation.
  */
 export function validateConsolidatedDocumentsV2(value: unknown): ErrorTree {
   if (!isPlainObject(value)) return treeOf([]);
   const entries = value["metadata"];
   if (!isPlainObject(entries)) return treeOf([]);
-  const problems: PathedIssue[] = [];
-  const onDisk = (base: PathedIssue[], entry: unknown): PathedIssue[] => {
-    if (isPlainObject(entry) && has(entry, "attributes")) {
-      return [
-        ...base.filter((issue) => issue.path[0] !== "attributes"),
-        problem(
-          ["attributes"],
-          "unexpected document member (on disk, attributes live in the sibling .zattrs file)",
-          "invalid_value",
-        ),
-      ];
-    }
-    return base;
-  };
-  for (const [key, entry] of Object.entries(entries)) {
-    const basename = key.slice(key.lastIndexOf("/") + 1);
-    let entryProblems: PathedIssue[] | undefined;
-    if (basename === ".zarray") {
-      entryProblems = onDisk(arrayMetadataV2Problems(entry), entry);
-    } else if (basename === ".zgroup") {
-      entryProblems = onDisk(groupMetadataV2Problems(entry), entry);
-    } else if (basename === ".zattrs") {
-      entryProblems = isPlainObject(entry)
-        ? jsonProblems(entry)
-        : [problem([], "expected a mapping with string keys", "invalid_type")];
-    }
-    if (entryProblems !== undefined && entryProblems.length > 0) {
-      problems.push(...prefix("metadata", prefix(key, entryProblems)));
-    }
-  }
-  return treeOf(problems);
+  return treeOf(consolidatedEntriesV2Problems(entries));
 }

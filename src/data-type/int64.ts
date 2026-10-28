@@ -1,4 +1,4 @@
-import { intDataType } from "./descriptor.js";
+import { intDataType, multiByte } from "./scalar.js";
 
-/** The core `int64` data type. */
-export const int64 = intDataType("int64", -9223372036854775808, 9223372036854775807);
+/** The core `int64` data type: its fill value is an integer in its range. */
+export const int64 = intDataType("int64", -(2 ** 63), 2 ** 63 - 1, multiByte);

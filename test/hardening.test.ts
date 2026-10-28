@@ -16,7 +16,12 @@ import {
   parseJson,
   validateArrayMetadataV2,
   validateArrayMetadataV3,
+  validateArraySemanticsV3,
+  validateConsolidatedMetadataV2,
+  validateConsolidatedMetadataV3,
+  validateGroupMetadataV3,
   validateJson,
+  validateMetadataV3,
 } from "../src/index.js";
 
 const VALID_ARRAY = {
@@ -76,13 +81,10 @@ describe("nesting depth cap", () => {
         filters: null,
       }),
     );
-    expect(problems).toEqual([
-      {
-        path: ["dtype"],
-        message: "expected a v2 dtype string or a sequence of field records",
-        kind: "invalid_type",
-      },
-    ]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]!.path[0]).toBe("dtype");
+    expect(problems[0]!.kind).toBe("invalid_value");
+    expect(problems[0]!.message).toContain("nesting depth");
   });
 });
 
@@ -103,14 +105,14 @@ describe("non-plain objects are not mappings", () => {
 
   it("reports a single root invalid_type for a non-mapping document, like Python", () => {
     expect(flattenTree(validateArrayMetadataV2(new Date()))).toEqual([
-      { path: [], message: "expected a mapping", kind: "invalid_type" },
+      { path: [], message: "expected an object", kind: "invalid_type" },
     ]);
   });
 
   it("rejects a Date in attributes instead of validating it as empty", () => {
     const problems = flattenTree(validateArrayMetadataV3({ ...VALID_ARRAY, attributes: new Date() }));
     expect(problems).toEqual([
-      { path: ["attributes"], message: "expected a mapping with string keys", kind: "invalid_type" },
+      { path: ["attributes"], message: "expected an object with string keys", kind: "invalid_type" },
     ]);
   });
 });
@@ -147,8 +149,26 @@ describe("loadStoreJson", () => {
     }
   });
 
-  it("reports malformed JSON, invalid UTF-8, and non-standard constants as invalid_json", () => {
-    for (const raw of ["{", new Uint8Array([0xff, 0xfe]), "NaN"]) {
+  it("reads the bare NaN, Infinity and -Infinity tokens zarr-python writes, outside strings only", () => {
+    const text = '{"a": NaN, "b": [Infinity, -Infinity], "c": "NaN \\" Infinity", "NaN": 1}';
+    expect(loadStoreJson({ key: text }, "key")).toEqual({
+      a: NaN,
+      b: [Infinity, -Infinity],
+      c: 'NaN " Infinity',
+      NaN: 1,
+    });
+  });
+
+  it("reads a large document holding a NaN", () => {
+    const data = Array.from({ length: 200_000 }, (_, index) => index);
+    const text = JSON.stringify({ data, attributes: { x: 0 } }, null, 2).replace('"x": 0', '"x": NaN');
+    const value = loadStoreJson({ key: text }, "key") as { data: number[]; attributes: { x: number } };
+    expect(value.data).toHaveLength(200_000);
+    expect(value.attributes.x).toBeNaN();
+  });
+
+  it("reports malformed JSON, invalid UTF-8, and misplaced constants as invalid_json", () => {
+    for (const raw of ["{", new Uint8Array([0xff, 0xfe]), "[1 NaN]", "NaNa", "nan", '{NaN: 1}', '{"a": {Infinity: []}}']) {
       let kind: string | undefined;
       try {
         loadStoreJson({ key: raw }, "key");
@@ -169,6 +189,152 @@ describe("dumpStoreJson", () => {
   it("throws on non-JSON values instead of silently writing null", () => {
     expect(() => dumpStoreJson({ fill_value: NaN })).toThrow(MetadataValidationError);
     expect(() => dumpStoreJson(new Map())).toThrow(MetadataValidationError);
+  });
+
+  it("writes non-finite numbers as bare tokens when asked, and reads them back", () => {
+    const document = { ...VALID_ARRAY, attributes: { _FillValue: NaN, range: [-Infinity, Infinity] } };
+    const bytes = dumpStoreJson(document, { allowNonFinite: true });
+    expect(new TextDecoder().decode(bytes)).toContain('"_FillValue":NaN,"range":[-Infinity,Infinity]');
+    expect(loadStoreJson({ "zarr.json": bytes }, "zarr.json")).toEqual(document);
+    expect(() => dumpStoreJson(new Map(), { allowNonFinite: true })).toThrow(MetadataValidationError);
+  });
+});
+
+describe("validateGroupMetadataV3", () => {
+  it("still checks the documents a group lists as user data", () => {
+    const listed = { ...VALID_ARRAY, attributes: { a: new Map() } };
+    const problems = flattenTree(
+      validateGroupMetadataV3({
+        zarr_format: 3,
+        node_type: "group",
+        consolidated_metadata: { kind: "inline", must_understand: false, metadata: { a: listed, b: { node_type: "x", c: new Set() } } },
+      }),
+    ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems.sort()).toEqual([
+      "consolidated_metadata.metadata.a.attributes.a: invalid_type",
+      "consolidated_metadata.metadata.b.c: invalid_type",
+    ]);
+  });
+});
+
+describe("two listings of one group", () => {
+  it("differ when one attribute is NaN and the other null", () => {
+    const group = (attributes: Record<string, unknown>) => ({ zarr_format: 3, node_type: "group", attributes });
+    const listing = (metadata: Record<string, unknown>) => ({ kind: "inline", must_understand: false, metadata });
+    const problems = flattenTree(
+      validateConsolidatedMetadataV3(
+        listing({
+          g: { zarr_format: 3, node_type: "group", consolidated_metadata: listing({ x: group({ a: NaN }) }) },
+          "g/x": group({ a: null }),
+        }),
+      ),
+    ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems).toEqual(["metadata.g.consolidated_metadata.metadata.x: invalid_value"]);
+  });
+});
+
+describe("validateConsolidatedMetadataV3", () => {
+  it("checks a listed document that is no node as user data", () => {
+    const problems = flattenTree(
+      validateConsolidatedMetadataV3({ kind: "inline", must_understand: false, metadata: { b: { node_type: "x", c: new Set() } } }),
+    ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems.sort()).toEqual([
+      "metadata.b.c: invalid_type",
+      "metadata.b.node_type: invalid_value",
+      "metadata.b.zarr_format: missing_key",
+    ]);
+  });
+});
+
+describe("a \"__proto__\" key", () => {
+  it("is read as an ordinary key, as JSON.parse reads it", () => {
+    const struct = {
+      name: "struct",
+      configuration: { fields: [{ name: "__proto__", data_type: "int8" }] },
+    };
+    const doc = (fill: string) => JSON.parse(
+      `{"zarr_format":3,"node_type":"array","shape":[4],"data_type":${JSON.stringify(struct)},` +
+        `"chunk_grid":{"name":"regular","configuration":{"chunk_shape":[2]}},` +
+        `"chunk_key_encoding":"default","fill_value":${fill},"codecs":["bytes"]}`,
+    ) as unknown;
+    const problems = (fill: string) =>
+      flattenTree(validateArraySemanticsV3(doc(fill))).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems('{"__proto__": 0}')).toEqual([]);
+    expect(problems('{"__proto__": 0, "x": 1}')).toEqual(["fill_value.x: unknown_key"]);
+    expect(problems("{}")).toEqual(["fill_value.__proto__: missing_key"]);
+  });
+});
+
+describe("validateMetadataV3 on a group", () => {
+  it("reports a problem in a listed document once", () => {
+    const listed = { ...VALID_ARRAY, attributes: { a: new Map() } };
+    const problems = flattenTree(
+      validateMetadataV3({
+        zarr_format: 3,
+        node_type: "group",
+        consolidated_metadata: { kind: "inline", must_understand: false, metadata: { a: listed } },
+      }),
+    ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems).toEqual(["consolidated_metadata.metadata.a.attributes.a: invalid_type"]);
+  });
+});
+
+describe("problem lists as long as the document", () => {
+  it("are returned, not thrown, for a large array of non-finite numbers", () => {
+    const many = Array.from({ length: 200_000 }, () => NaN);
+    expect(isJson(many)).toBe(false);
+    expect(flattenTree(validateArrayMetadataV3({ ...VALID_ARRAY, fill_value: many }))).toHaveLength(200_000);
+    const grid = { name: "rectilinear", configuration: { kind: "inline", chunk_shapes: [Array.from({ length: 200_000 }, () => 0)] } };
+    const codecs = [{ name: "bytes", configuration: { endian: "little" } }];
+    expect(flattenTree(validateArraySemanticsV3({ ...VALID_ARRAY, chunk_grid: grid, codecs }))).toHaveLength(200_000);
+  });
+});
+
+describe("non-finite numbers", () => {
+  const paths = (tree: Parameters<typeof flattenTree>[0]) =>
+    flattenTree(tree).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+
+  it("are accepted in attributes and other user data", () => {
+    expect(paths(validateArrayMetadataV3({ ...VALID_ARRAY, attributes: { a: NaN }, "x.ext": { must_understand: false, v: Infinity } }))).toEqual([]);
+    expect(
+      paths(
+        validateGroupMetadataV3({
+          zarr_format: 3,
+          node_type: "group",
+          attributes: { a: -Infinity },
+          consolidated_metadata: { kind: "inline", must_understand: false, metadata: { a: { fill_value: NaN } } },
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      paths(
+        validateConsolidatedMetadataV3({
+          kind: "inline",
+          must_understand: false,
+          metadata: { a: { ...VALID_ARRAY, attributes: { a: NaN } } },
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      paths(validateConsolidatedMetadataV2({ zarr_consolidated_format: 1, metadata: { ".zgroup": { zarr_format: 2 }, ".zattrs": { a: NaN } } })),
+    ).toEqual([]);
+  });
+
+  it("are refused where the spec interprets a value", () => {
+    expect(paths(validateArrayMetadataV3({ ...VALID_ARRAY, fill_value: NaN }))).toEqual(["fill_value: invalid_value"]);
+    expect(
+      paths(validateConsolidatedMetadataV3({ kind: "inline", must_understand: false, metadata: { a: { ...VALID_ARRAY, fill_value: NaN } } })),
+    ).toEqual(["metadata.a.fill_value: invalid_value"]);
+    expect(
+      paths(
+        validateArrayMetadataV2({
+          zarr_format: 2, shape: [1], chunks: [1], dtype: "<f8", compressor: null, fill_value: null, order: "C", filters: null, extra: NaN,
+        }),
+      ),
+    ).toEqual(["extra: invalid_value"]);
+    expect(paths(validateConsolidatedMetadataV2({ zarr_consolidated_format: 1, metadata: { foo: Infinity } }))).toEqual([
+      "metadata.foo: invalid_value",
+    ]);
   });
 });
 
@@ -225,10 +391,10 @@ describe("dense-array requirement (round 2)", () => {
       fill_value: 0,
       order: "C",
       filters: null,
-    }))).toEqual([{ path: ["shape"], message: "expected a sequence of int", kind: "invalid_type" }]);
+    }))).toEqual([{ path: ["shape"], message: "expected an array of integers", kind: "invalid_type" }]);
     const problems = flattenTree(validateArrayMetadataV3({ ...VALID_ARRAY, dimension_names: [, "x"] })); // eslint-disable-line no-sparse-arrays
     expect(problems).toEqual([
-      { path: ["dimension_names"], message: "expected a sequence", kind: "invalid_type" },
+      { path: ["dimension_names"], message: "expected an array", kind: "invalid_type" },
     ]);
   });
 });

@@ -174,7 +174,7 @@
     ]
   },
   {
-    "description": "unexpected member in the closed v2 document",
+    "description": "a member the spec does not define is accepted (other keys SHOULD be ignored)",
     "document": {
       "zarr_format": 2,
       "shape": [
@@ -190,14 +190,7 @@
       "filters": null,
       "node_type": "array"
     },
-    "problems": [
-      {
-        "loc": [
-          "node_type"
-        ],
-        "kind": "invalid_value"
-      }
-    ]
+    "problems": []
   },
   {
     "description": "invalid order and dimension_separator values",
@@ -232,7 +225,7 @@
     ]
   },
   {
-    "description": "compressor without a string id",
+    "description": "compressor without an id",
     "document": {
       "zarr_format": 2,
       "shape": [
@@ -252,14 +245,15 @@
     "problems": [
       {
         "loc": [
-          "compressor"
+          "compressor",
+          "id"
         ],
-        "kind": "invalid_type"
+        "kind": "missing_key"
       }
     ]
   },
   {
-    "description": "empty filters list (null is the spelling for no filters)",
+    "description": "empty filters list (the spec sets no minimum)",
     "document": {
       "zarr_format": 2,
       "shape": [
@@ -274,17 +268,10 @@
       "order": "C",
       "filters": []
     },
-    "problems": [
-      {
-        "loc": [
-          "filters"
-        ],
-        "kind": "invalid_value"
-      }
-    ]
+    "problems": []
   },
   {
-    "description": "filters entry without a string id",
+    "description": "filters entries without an id, with a non-string id, and not an object",
     "document": {
       "zarr_format": 2,
       "shape": [
@@ -299,24 +286,46 @@
       "order": "C",
       "filters": [
         {
-          "id": "delta"
+          "id": "zlib",
+          "level": 1
         },
         {
           "no_id": 1
-        }
+        },
+        {
+          "id": 5
+        },
+        7
       ]
     },
     "problems": [
       {
         "loc": [
-          "filters"
+          "filters",
+          1,
+          "id"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "filters",
+          2,
+          "id"
+        ],
+        "kind": "invalid_type"
+      },
+      {
+        "loc": [
+          "filters",
+          3
         ],
         "kind": "invalid_type"
       }
     ]
   },
   {
-    "description": "dtype that is neither a string nor field records",
+    "description": "field record with one member",
     "document": {
       "zarr_format": 2,
       "shape": [
@@ -338,7 +347,8 @@
     "problems": [
       {
         "loc": [
-          "dtype"
+          "dtype",
+          0
         ],
         "kind": "invalid_type"
       }
@@ -438,14 +448,14 @@
       ],
       "dtype": [],
       "compressor": null,
-      "fill_value": 0,
+      "fill_value": null,
       "order": "C",
       "filters": null
     },
     "problems": []
   },
   {
-    "description": "dtype field-record edges: bad nested dtype, bad subarray shape, oversized record",
+    "description": "field record whose dtype is neither a typestr nor field records",
     "document": {
       "zarr_format": 2,
       "shape": [
@@ -461,14 +471,16 @@
         ]
       ],
       "compressor": null,
-      "fill_value": 0,
+      "fill_value": null,
       "order": "C",
       "filters": null
     },
     "problems": [
       {
         "loc": [
-          "dtype"
+          "dtype",
+          0,
+          1
         ],
         "kind": "invalid_type"
       }
@@ -495,14 +507,17 @@
         ]
       ],
       "compressor": null,
-      "fill_value": 0,
+      "fill_value": null,
       "order": "C",
       "filters": null
     },
     "problems": [
       {
         "loc": [
-          "dtype"
+          "dtype",
+          0,
+          2,
+          1
         ],
         "kind": "invalid_type"
       }
@@ -530,6 +545,32 @@
         ]
       ],
       "compressor": null,
+      "fill_value": null,
+      "order": "C",
+      "filters": null
+    },
+    "problems": [
+      {
+        "loc": [
+          "dtype",
+          0
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "dtype that is neither a string nor a list",
+    "document": {
+      "zarr_format": 2,
+      "shape": [
+        100
+      ],
+      "chunks": [
+        10
+      ],
+      "dtype": 5,
+      "compressor": null,
       "fill_value": 0,
       "order": "C",
       "filters": null
@@ -540,6 +581,288 @@
           "dtype"
         ],
         "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "dtype strings that are not NumPy typestrs",
+    "document": {
+      "zarr_format": 2,
+      "shape": [
+        100
+      ],
+      "chunks": [
+        10
+      ],
+      "dtype": [
+        [
+          "a",
+          "i4"
+        ],
+        [
+          "b",
+          "<i"
+        ],
+        [
+          "c",
+          "|O"
+        ]
+      ],
+      "compressor": null,
+      "fill_value": null,
+      "order": "C",
+      "filters": null
+    },
+    "problems": [
+      {
+        "loc": [
+          "dtype",
+          0,
+          1
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "dtype",
+          1,
+          1
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "field records: a duplicate name, a negative subarray length, a non-string name",
+    "document": {
+      "zarr_format": 2,
+      "shape": [
+        100
+      ],
+      "chunks": [
+        10
+      ],
+      "dtype": [
+        [
+          "a",
+          "<i4"
+        ],
+        [
+          "a",
+          "<i4",
+          [
+            -1
+          ]
+        ],
+        [
+          5,
+          "<i4"
+        ],
+        [
+          6,
+          "<i4",
+          [
+            2
+          ]
+        ]
+      ],
+      "compressor": null,
+      "fill_value": null,
+      "order": "C",
+      "filters": null
+    },
+    "problems": [
+      {
+        "loc": [
+          "dtype",
+          1,
+          2,
+          0
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "dtype",
+          2
+        ],
+        "kind": "invalid_type"
+      },
+      {
+        "loc": [
+          "dtype",
+          3,
+          0
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "duplicate field names in a nested record list",
+    "document": {
+      "zarr_format": 2,
+      "shape": [
+        100
+      ],
+      "chunks": [
+        10
+      ],
+      "dtype": [
+        [
+          "a",
+          [
+            [
+              "b",
+              "<i4"
+            ],
+            [
+              "b",
+              "<f4"
+            ]
+          ]
+        ]
+      ],
+      "compressor": null,
+      "fill_value": null,
+      "order": "C",
+      "filters": null
+    },
+    "problems": [
+      {
+        "loc": [
+          "dtype",
+          0,
+          1,
+          1,
+          0
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "a three-member record with two problems reads as a bad pair",
+    "document": {
+      "zarr_format": 2,
+      "shape": [
+        100
+      ],
+      "chunks": [
+        10
+      ],
+      "dtype": [
+        [
+          5,
+          "<i4",
+          "x"
+        ]
+      ],
+      "compressor": null,
+      "fill_value": null,
+      "order": "C",
+      "filters": null
+    },
+    "problems": [
+      {
+        "loc": [
+          "dtype",
+          0
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "order and dimension_separator of the wrong JSON type",
+    "document": {
+      "zarr_format": 2,
+      "shape": [
+        100
+      ],
+      "chunks": [
+        10
+      ],
+      "dtype": "<f8",
+      "compressor": null,
+      "fill_value": 0,
+      "order": 1,
+      "filters": null,
+      "dimension_separator": null
+    },
+    "problems": [
+      {
+        "loc": [
+          "order"
+        ],
+        "kind": "invalid_type"
+      },
+      {
+        "loc": [
+          "dimension_separator"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "compressor that is not an object, and filters that is not a list",
+    "document": {
+      "zarr_format": 2,
+      "shape": [
+        100
+      ],
+      "chunks": [
+        10
+      ],
+      "dtype": "<f8",
+      "compressor": "zlib",
+      "fill_value": 0,
+      "order": "C",
+      "filters": {
+        "id": "zlib"
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "compressor"
+        ],
+        "kind": "invalid_type"
+      },
+      {
+        "loc": [
+          "filters"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "a codec id that is empty",
+    "document": {
+      "zarr_format": 2,
+      "shape": [
+        100
+      ],
+      "chunks": [
+        10
+      ],
+      "dtype": "<f8",
+      "compressor": {
+        "id": ""
+      },
+      "fill_value": 0,
+      "order": "C",
+      "filters": null
+    },
+    "problems": [
+      {
+        "loc": [
+          "compressor",
+          "id"
+        ],
+        "kind": "invalid_value"
       }
     ]
   }

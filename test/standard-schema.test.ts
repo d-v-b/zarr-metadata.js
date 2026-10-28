@@ -60,12 +60,16 @@ describe("standard schema conformance", () => {
       codecs: [],
     });
     expect(result.issues).toEqual([
-      { message: "expected at least one codec", path: ["codecs"], kind: "invalid_value" },
+      {
+        message: "expected an array -> bytes codec, got none",
+        path: ["codecs"],
+        kind: "invalid_value",
+      },
     ]);
   });
 
   it("a root-level issue omits the path, per spec", async () => {
     const result = await arrayMetadataV2Schema["~standard"].validate(42);
-    expect(result.issues).toEqual([{ message: "expected a mapping", kind: "invalid_type" }]);
+    expect(result.issues).toEqual([{ message: "expected an object", kind: "invalid_type" }]);
   });
 });

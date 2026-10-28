@@ -21,14 +21,24 @@ export {
   type PathedIssue,
 } from "./errors.js";
 export type {
-  ChunkGridVerdict,
   RectilinearChunkGridConfiguration,
   RectilinearDimSpec,
   RegularChunkGridConfiguration,
 } from "./chunk-grid/index.js";
 export type {
+  DefaultChunkKeyEncodingConfiguration,
+  V2ChunkKeyEncodingConfiguration,
+} from "./chunk-key-encoding/index.js";
+export type {
+  BloscCodecConfiguration,
+  BytesCodecConfiguration,
+  CastValueCodecConfiguration,
+  GzipCodecConfiguration,
+  ScalarMapEntry,
+  ScaleOffsetCodecConfiguration,
   ShardingIndexedCodecConfiguration,
   TransposeCodecConfiguration,
+  ZstdCodecConfiguration,
 } from "./codec/index.js";
 export type {
   BytesFillValue,

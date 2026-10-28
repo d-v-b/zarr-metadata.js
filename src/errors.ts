@@ -23,8 +23,18 @@
  * - `invalid_value`: a value has an acceptable type but invalid content
  *   (e.g. `zarr_format: 2` in a v3 document, `order: "Q"`).
  * - `invalid_json`: bytes/text that do not decode as JSON.
+ * - `unknown_key`: a key that a closed object does not declare (an extra
+ *   member of a metadata field envelope, of a `.zgroup`, or of a
+ *   configuration the semantic layer interprets). It has its own kind
+ *   because whether a configuration is closed is rarely stated by the
+ *   spec, and a consumer may choose to tolerate such keys.
  */
-export type IssueKind = "missing_key" | "invalid_type" | "invalid_value" | "invalid_json";
+export type IssueKind =
+  | "missing_key"
+  | "invalid_type"
+  | "invalid_value"
+  | "invalid_json"
+  | "unknown_key";
 
 /** One problem, attached to the tree node whose document location it describes. */
 export interface Issue {
@@ -55,6 +65,18 @@ export interface PathedIssue extends Issue {
 export interface ErrorTree {
   readonly issues: ReadonlyArray<Issue>;
   readonly children: ReadonlyMap<string | number, ErrorTree>;
+}
+
+/**
+ * Append every item of each list to `target`, one at a time. `push(...list)`
+ * passes each item as a call argument, which throws a `RangeError` for a
+ * list as long as a large document can make one (a `fill_value` holding
+ * 200,000 `NaN` values has as many problems).
+ */
+export function append<T>(target: T[], ...lists: ReadonlyArray<ReadonlyArray<T>>): void {
+  for (const list of lists) {
+    for (const item of list) target.push(item);
+  }
 }
 
 /** Whether `tree` holds no issues anywhere — the success verdict. */

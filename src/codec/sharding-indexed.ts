@@ -1,7 +1,15 @@
-/** The core `sharding_indexed` codec: syntax and semantics. */
+/** The core `sharding_indexed` codec. */
+import {
+  configured,
+  field,
+  type AcceptedField,
+  type Chunk,
+  type CodecDefinition,
+  type Lengths,
+} from "../definition.js";
 import type { PathedIssue } from "../errors.js";
-import { isIntArray, type Path } from "../guards.js";
-import { DROPPED, type PipelineContext } from "./index.js";
+import { integerIn, issue, oneOf, optional, required, sequenceOf } from "../typed.js";
+import { uint64 } from "../data-type/uint64.js";
 
 /** Configuration of the core `sharding_indexed` codec. */
 export interface ShardingIndexedCodecConfiguration {
@@ -11,103 +19,87 @@ export interface ShardingIndexedCodecConfiguration {
   index_location?: "start" | "end";
 }
 
-type Walk = (
-  pipeline: unknown[],
-  path: Path,
-  dims: number | undefined,
-  chunkSizes: number[][] | undefined,
-) => PathedIssue[];
+/** The data type of a shard index, which the spec fixes. */
+const UINT64: AcceptedField = {
+  status: "accepted",
+  json: "uint64",
+  name: "uint64",
+  definition: uint64,
+  configuration: {},
+  nested: new Map(),
+};
+
+/** The number of inner chunks a shard holds along each axis; undefined where unknown. */
+function perShard(chunkShape: readonly number[], lengths: Lengths | undefined): Lengths {
+  if (lengths === undefined) return chunkShape.map(() => undefined);
+  return chunkShape.map((inner, axis) => {
+    const shard = lengths[axis];
+    if (shard === undefined || shard.some((length) => length % inner !== 0)) return undefined;
+    return [...new Set(shard.map((length) => length / inner))];
+  });
+}
 
 /**
- * Judge one sharding entry: it requires `chunk_shape`, `codecs`, and
- * `index_codecs`; its chunk_shape must match the array's dimensionality
- * and evenly divide every chunk it shards. The inner pipeline is walked
- * with the shard's own chunk context (`index_codecs` encode the shard
- * index, whose shape differs — no dimensional context applies there), and
- * the array -> bytes boundary spends the context for whatever follows.
+ * "The length of the chunk_shape array must match the number of dimensions
+ * of the shard shape to which this sharding codec is applied, and the inner
+ * chunk shape along each dimension must evenly divide the size of the shard
+ * shape." The shard is the chunk the codec receives, so a transposed shard
+ * is divided along its transposed axes. The inner codecs receive the inner
+ * chunks, of the shard's data type; the index codecs receive the shard
+ * index, of `uint64`, with an axis of length 2 appended, and may hold only
+ * codecs of static size, since a reader locates the index by its size.
  */
-export function shardingIndexedIssues(
-  configuration: Record<string, unknown> | undefined,
-  configMissing: boolean,
-  path: Path,
-  index: number,
-  context: PipelineContext,
-  walk: Walk,
-): { issues: PathedIssue[]; context: PipelineContext } {
-  const issues: PathedIssue[] = [];
-  if (configMissing) {
-    issues.push({
-      path: [...path, index],
-      message:
-        '"sharding_indexed" requires a configuration with "chunk_shape", "codecs", and "index_codecs"',
-      kind: "missing_key",
-    });
-    return { issues, context: DROPPED };
-  }
-  if (configuration !== undefined) {
-    for (const key of ["chunk_shape", "codecs", "index_codecs"]) {
-      if (!Object.hasOwn(configuration, key)) {
-        issues.push({
-          path: [...path, index, "configuration", key],
-          message: "missing required key",
-          kind: "missing_key",
-        });
+export const shardingIndexed: CodecDefinition<ShardingIndexedCodecConfiguration> = {
+  name: "sharding_indexed",
+  ...configured({
+    chunk_shape: required(sequenceOf(integerIn({ ge: 1 }))),
+    codecs: required(sequenceOf(field("codec"))),
+    index_codecs: required(sequenceOf(field("codec", { staticOnly: true }))),
+    index_location: optional(oneOf(["start", "end"])),
+  }),
+  kind: "array_bytes",
+  size: "dynamic",
+  chunkRules: ({ chunk_shape }, _nested, chunk) => {
+    const lengths = chunk.lengths;
+    if (lengths === undefined) return [];
+    if (chunk_shape.length !== lengths.length) {
+      return [
+        issue(
+          ["chunk_shape"],
+          `expected ${lengths.length} inner chunk lengths, one per axis of the chunk the codec is handed, got ${chunk_shape.length}`,
+          "invalid_value",
+        ),
+      ];
+    }
+    const issues: PathedIssue[] = [];
+    chunk_shape.forEach((inner, axis) => {
+      const undivided = (lengths[axis] ?? []).filter((length) => length % inner !== 0);
+      if (undivided.length > 0) {
+        issues.push(
+          issue(
+            ["chunk_shape", axis],
+            "expected an inner chunk length that divides each length the shards take along this axis, " +
+              `got ${inner}, which does not divide ${undivided.reduce((low, length) => Math.min(low, length))}`,
+            "invalid_value",
+          ),
+        );
       }
-    }
-  }
-  const chunkShape = configuration?.["chunk_shape"];
-  if (!isIntArray(chunkShape)) {
-    // Still walk a present inner pipeline (entries deserve their own
-    // verdicts) before the context becomes unknowable.
-    const inner = configuration?.["codecs"];
-    if (Array.isArray(inner)) {
-      issues.push(
-        ...walk(inner, [...path, index, "configuration", "codecs"], undefined, undefined),
-      );
-    }
-    return { issues, context: DROPPED };
-  }
-  const chunkShapePath = [...path, index, "configuration", "chunk_shape"];
-  if (context.dims !== undefined && chunkShape.length !== context.dims) {
-    issues.push({
-      path: chunkShapePath,
-      message: `expected one length per array dimension (${context.dims})`,
-      kind: "invalid_value",
     });
-  } else if (
-    context.chunkSizes !== undefined &&
-    chunkShape.length === context.chunkSizes.length &&
-    chunkShape.every((length) => length > 0)
-  ) {
-    let violation: { axis: number; size: number } | undefined;
-    context.chunkSizes.forEach((sizes, axis) => {
-      if (violation !== undefined) return;
-      const bad = sizes.find((size) => size % (chunkShape[axis] as number) !== 0);
-      if (bad !== undefined) violation = { axis, size: bad };
-    });
-    if (violation !== undefined) {
-      const { axis, size } = violation;
-      const sizesNow = context.chunkSizes;
-      const uniform = sizesNow.every((sizes) => sizes.length === 1);
-      issues.push({
-        path: chunkShapePath,
-        message: uniform
-          ? `expected ${JSON.stringify(chunkShape)} to evenly divide the outer chunk shape ${JSON.stringify(sizesNow.map((sizes) => sizes[0]))}`
-          : `expected ${JSON.stringify(chunkShape)} to evenly divide every chunk size of the grid (dimension ${axis} has chunk size ${size})`,
-        kind: "invalid_value",
-      });
+    return issues;
+  },
+  pipelines: ({ chunk_shape }, _nested, chunk): Record<string, Chunk> => {
+    const lengths = chunk.lengths;
+    // Which of the two disagrees is unknown, so both pipelines receive
+    // chunks of unknown lengths.
+    if (lengths !== undefined && lengths.length !== chunk_shape.length) {
+      return {
+        codecs: { lengths: undefined, dataType: chunk.dataType },
+        index_codecs: { lengths: undefined, dataType: UINT64 },
+      };
     }
-  }
-  const inner = configuration?.["codecs"];
-  if (Array.isArray(inner)) {
-    issues.push(
-      ...walk(
-        inner,
-        [...path, index, "configuration", "codecs"],
-        chunkShape.length,
-        chunkShape.map((length) => [length]),
-      ),
-    );
-  }
-  return { issues, context: DROPPED };
-}
+    return {
+      codecs: { lengths: chunk_shape.map((length) => [length]), dataType: chunk.dataType },
+      index_codecs: { lengths: [...perShard(chunk_shape, lengths), [2]], dataType: UINT64 },
+    };
+  },
+};

@@ -1,4 +1,6 @@
-import { isByteArray, named, simple, type DataTypeDescriptor } from "./descriptor.js";
+import type { DataTypeDefinition } from "../definition.js";
+import { anyOf, integerIn, issue, sequenceOf, show, string } from "../typed.js";
+import { NOTHING_TO_CONFIGURE, variableLength } from "./scalar.js";
 
 /**
  * Fill value of the `bytes` data type: an array of integers in `[0, 255]`
@@ -13,14 +15,23 @@ export function isBase64(value: string): boolean {
   return value.length % 4 === 0 && BASE64.test(value);
 }
 
-/** The zarr-extensions `bytes` data type (variable-length raw bytes). */
-export const bytes: DataTypeDescriptor = {
-  matches: named("bytes"),
-  fillIssues: (fill) => {
-    if (isByteArray(fill)) return [];
-    if (typeof fill === "string" && isBase64(fill)) return [];
-    return simple(
-      'expected an array of integers in [0, 255] or a base64 string for data type "bytes"',
-    );
-  },
+/** One byte of a fill value: an integer in `[0, 255]`. */
+export const BYTE = integerIn({ ge: 0, le: 255 });
+
+/** The zarr-extensions `bytes` data type: variable-length byte strings. */
+export const bytes: DataTypeDefinition<Record<string, never>, BytesFillValue> = {
+  name: "bytes",
+  ...NOTHING_TO_CONFIGURE,
+  fillValue: anyOf(
+    [
+      { shape: "tuple", parse: sequenceOf(BYTE) },
+      { shape: "str", parse: string },
+    ],
+    "an array of integers or a string",
+  ),
+  fillValueRules: (_configuration, _nested, value) =>
+    typeof value === "string" && !isBase64(value)
+      ? [issue([], `expected standard-alphabet base64, got ${show(value)}`, "invalid_value")]
+      : [],
+  storage: variableLength,
 };

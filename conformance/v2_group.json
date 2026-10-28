@@ -1,32 +1,81 @@
 [
   {
     "description": "minimal valid group",
-    "document": { "zarr_format": 2 },
+    "document": {
+      "zarr_format": 2
+    },
     "problems": []
   },
   {
     "description": "valid group with merged attributes",
-    "document": { "zarr_format": 2, "attributes": { "title": "root", "n": [1, 2] } },
+    "document": {
+      "zarr_format": 2,
+      "attributes": {
+        "title": "root",
+        "n": [
+          1,
+          2
+        ]
+      }
+    },
     "problems": []
   },
   {
     "description": "empty document",
     "document": {},
-    "problems": [{ "loc": ["zarr_format"], "kind": "missing_key" }]
+    "problems": [
+      {
+        "loc": [
+          "zarr_format"
+        ],
+        "kind": "missing_key"
+      }
+    ]
   },
   {
     "description": "zarr_format as a string",
-    "document": { "zarr_format": "2" },
-    "problems": [{ "loc": ["zarr_format"], "kind": "invalid_value" }]
+    "document": {
+      "zarr_format": "2"
+    },
+    "problems": [
+      {
+        "loc": [
+          "zarr_format"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
   },
   {
     "description": "unexpected member in the closed v2 document",
-    "document": { "zarr_format": 2, "shape": [1] },
-    "problems": [{ "loc": ["shape"], "kind": "invalid_value" }]
+    "document": {
+      "zarr_format": 2,
+      "shape": [
+        1
+      ]
+    },
+    "problems": [
+      {
+        "loc": [
+          "shape"
+        ],
+        "kind": "unknown_key"
+      }
+    ]
   },
   {
     "description": "attributes that is not an object",
-    "document": { "zarr_format": 2, "attributes": "nope" },
-    "problems": [{ "loc": ["attributes"], "kind": "invalid_type" }]
+    "document": {
+      "zarr_format": 2,
+      "attributes": "nope"
+    },
+    "problems": [
+      {
+        "loc": [
+          "attributes"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
   }
 ]
