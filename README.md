@@ -110,7 +110,10 @@ Known differences from the reference implementation: v2 documents get
 the structural checks only (the reference also checks numpy dtype
 families, fill values against the dtype, and numcodecs configurations);
 two listings of one array in nested consolidated metadata are not
-compared; and `JSON.parse` cannot tell `1.0` from `1`.
+compared; and `JSON.parse` cannot tell `1.0` from `1`, nor two integers
+past 2^53 that round to the same double, so the edges of the 64-bit
+integer ranges (`int64`, `uint64`, numpy time ticks) are checked only as
+precisely as a double holds them.
 
 Consumers include the
 [Zarr Metadata VS Code extension](https://github.com/d-v-b/vscode-zarr).

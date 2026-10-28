@@ -23,7 +23,11 @@ export type ComplexFillValue = [FloatFillValue, FloatFillValue];
 /** The named non-finite fill values every IEEE 754 type takes. */
 export const FLOAT_SPECIAL_FILL_VALUES = ["NaN", "Infinity", "-Infinity"] as const;
 
-/** An integer data type, whose fill value is an integer in its range. */
+/**
+ * An integer data type, whose fill value is an integer in its range. The
+ * 64-bit bounds are not exact as doubles (`2 ** 63 - 1` is `2 ** 63`),
+ * which matches what `JSON.parse` makes of a fill value at the edge.
+ */
 export function intDataType(name: string, low: number, high: number, storage: () => StorageClass): DataTypeDefinition {
   return { name, ...NOTHING_TO_CONFIGURE, fillValue: integerIn({ ge: low, le: high }), storage };
 }
