@@ -192,6 +192,36 @@ describe("dumpStoreJson", () => {
   });
 });
 
+describe("validateGroupMetadataV3", () => {
+  it("still checks the documents a group lists as user data", () => {
+    const listed = { ...VALID_ARRAY, attributes: { a: new Map() } };
+    const problems = flattenTree(
+      validateGroupMetadataV3({
+        zarr_format: 3,
+        node_type: "group",
+        consolidated_metadata: { kind: "inline", must_understand: false, metadata: { a: listed, b: { node_type: "x", c: new Set() } } },
+      }),
+    ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems.sort()).toEqual([
+      "consolidated_metadata.metadata.a.attributes.a: invalid_type",
+      "consolidated_metadata.metadata.b.c: invalid_type",
+    ]);
+  });
+});
+
+describe("validateConsolidatedMetadataV3", () => {
+  it("checks a listed document that is no node as user data", () => {
+    const problems = flattenTree(
+      validateConsolidatedMetadataV3({ kind: "inline", must_understand: false, metadata: { b: { node_type: "x", c: new Set() } } }),
+    ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems.sort()).toEqual([
+      "metadata.b.c: invalid_type",
+      "metadata.b.node_type: invalid_value",
+      "metadata.b.zarr_format: missing_key",
+    ]);
+  });
+});
+
 describe("a \"__proto__\" key", () => {
   it("is read as an ordinary key, as JSON.parse reads it", () => {
     const struct = {

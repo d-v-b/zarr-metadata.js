@@ -828,6 +828,15 @@ function consolidatedEntriesV3Problems(value: unknown, depth: number): PathedIss
     }
     const { nodeType, problems: typeProblems } = nodeTypeV3(entry);
     let entryProblems = typeProblems;
+    if (nodeType === undefined && isPlainObject(entry)) {
+      // A document that is no node is still checked as the user data a
+      // group document holds, apart from the members already judged.
+      for (const [member, value] of Object.entries(entry)) {
+        if (member !== "zarr_format" && member !== "node_type") {
+          entryProblems.push(...prefix(member, userDataProblems(value)));
+        }
+      }
+    }
     if (nodeType === "array") {
       entryProblems = arrayMetadataV3Problems(entry);
     } else if (nodeType === "group") {
