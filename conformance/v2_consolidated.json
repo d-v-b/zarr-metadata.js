@@ -69,7 +69,7 @@
         "loc": [
           "extra"
         ],
-        "kind": "invalid_value"
+        "kind": "unknown_key"
       }
     ]
   },
@@ -101,7 +101,314 @@
         "loc": [
           "zarr_consolidated_format"
         ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "entries read as nodes: a .zarray missing keys, a .zgroup of the wrong format",
+    "document": {
+      "zarr_consolidated_format": 1,
+      "metadata": {
+        "a/.zarray": {
+          "zarr_format": 2
+        },
+        "b/.zgroup": {
+          "zarr_format": 3
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "a/.zarray",
+          "chunks"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "a/.zarray",
+          "compressor"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "a/.zarray",
+          "dtype"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "a/.zarray",
+          "fill_value"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "a/.zarray",
+          "filters"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "a/.zarray",
+          "order"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "a/.zarray",
+          "shape"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "b/.zgroup",
+          "zarr_format"
+        ],
         "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "attributes written in a .zarray or .zgroup entry instead of .zattrs",
+    "document": {
+      "zarr_consolidated_format": 1,
+      "metadata": {
+        "a/.zarray": {
+          "zarr_format": 2,
+          "shape": [
+            100
+          ],
+          "chunks": [
+            10
+          ],
+          "dtype": "<f8",
+          "compressor": null,
+          "fill_value": 0,
+          "order": "C",
+          "filters": null,
+          "attributes": {}
+        },
+        "b/.zgroup": {
+          "zarr_format": 2,
+          "attributes": {}
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "a/.zarray",
+          "attributes"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "b/.zgroup",
+          "attributes"
+        ],
+        "kind": "unknown_key"
+      }
+    ]
+  },
+  {
+    "description": "a .zattrs beside a node must be an object; a .zattrs alone forms no node",
+    "document": {
+      "zarr_consolidated_format": 1,
+      "metadata": {
+        "a/.zarray": {
+          "zarr_format": 2,
+          "shape": [
+            100
+          ],
+          "chunks": [
+            10
+          ],
+          "dtype": "<f8",
+          "compressor": null,
+          "fill_value": 0,
+          "order": "C",
+          "filters": null
+        },
+        "a/.zattrs": [
+          1
+        ],
+        "b/.zattrs": [
+          2
+        ]
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "a/.zattrs"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "entries that are not objects",
+    "document": {
+      "zarr_consolidated_format": 1,
+      "metadata": {
+        "a/.zarray": 5,
+        "b/.zgroup": "x"
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "a/.zarray"
+        ],
+        "kind": "invalid_type"
+      },
+      {
+        "loc": [
+          "metadata",
+          "b/.zgroup"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "a path holding both an array and a group, and a second key for one file",
+    "document": {
+      "zarr_consolidated_format": 1,
+      "metadata": {
+        "a/.zarray": {
+          "zarr_format": 2,
+          "shape": [
+            100
+          ],
+          "chunks": [
+            10
+          ],
+          "dtype": "<f8",
+          "compressor": null,
+          "fill_value": 0,
+          "order": "C",
+          "filters": null
+        },
+        "a/.zgroup": {
+          "zarr_format": 2
+        },
+        "b/.zgroup": {
+          "zarr_format": 2
+        },
+        "/b/.zgroup": {
+          "zarr_format": 2
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "a/.zgroup"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "/b/.zgroup"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "a node below an array, a missing group, and a '..' segment",
+    "document": {
+      "zarr_consolidated_format": 1,
+      "metadata": {
+        "a/.zarray": {
+          "zarr_format": 2,
+          "shape": [
+            100
+          ],
+          "chunks": [
+            10
+          ],
+          "dtype": "<f8",
+          "compressor": null,
+          "fill_value": 0,
+          "order": "C",
+          "filters": null
+        },
+        "a/b/.zgroup": {
+          "zarr_format": 2
+        },
+        "c/d/.zgroup": {
+          "zarr_format": 2
+        },
+        "../.zgroup": {
+          "zarr_format": 2
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "a/b/.zgroup"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "c/.zgroup"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "../.zgroup"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "nodes are not read while the envelope has a problem",
+    "document": {
+      "zarr_consolidated_format": 1,
+      "metadata": {
+        "a/.zarray": 5
+      },
+      "extra": 1
+    },
+    "problems": [
+      {
+        "loc": [
+          "extra"
+        ],
+        "kind": "unknown_key"
       }
     ]
   }

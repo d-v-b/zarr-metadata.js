@@ -1,7 +1,10 @@
 /**
  * Runs the shared conformance corpus (../conformance) against the
  * TypeScript validators. The same corpus runs against the Python reference
- * implementation via scripts/check_conformance.py.
+ * implementation via scripts/check_conformance.py, whose readers judge both
+ * structure and the rules of every extension they define; the v3 kinds are
+ * therefore checked here with the structural validators and the semantic
+ * layer together.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -12,20 +15,39 @@ import {
   flattenTree,
   validateArrayMetadataV2,
   validateArrayMetadataV3,
+  validateArraySemanticsV3,
   validateConsolidatedMetadataV2,
+  validateConsolidatedMetadataV3,
   validateGroupMetadataV2,
   validateGroupMetadataV3,
+  validateSemanticsV3,
   type ErrorTree,
+  type PathedIssue,
 } from "../src/index.js";
 
 const CORPUS_DIR = fileURLToPath(new URL("../conformance/", import.meta.url));
 
-const VALIDATORS: Record<string, (value: unknown) => ErrorTree> = {
-  v3_array: validateArrayMetadataV3,
-  v3_group: validateGroupMetadataV3,
-  v2_array: validateArrayMetadataV2,
-  v2_group: validateGroupMetadataV2,
-  v2_consolidated: validateConsolidatedMetadataV2,
+const flat = (tree: ErrorTree): PathedIssue[] => flattenTree(tree);
+
+/** The semantic issues of a `consolidated_metadata` member's documents, pathed from the member. */
+function consolidatedSemantics(value: unknown): PathedIssue[] {
+  const wrapped = { zarr_format: 3, node_type: "group", consolidated_metadata: value };
+  return flat(validateSemanticsV3(wrapped)).map((issue) => ({ ...issue, path: issue.path.slice(1) }));
+}
+
+const VALIDATORS: Record<string, (value: unknown) => PathedIssue[]> = {
+  v3_array: (value) => [
+    ...flat(validateArrayMetadataV3(value)),
+    ...flat(validateArraySemanticsV3(value)),
+  ],
+  v3_group: (value) => flat(validateGroupMetadataV3(value)),
+  v3_consolidated: (value) => [
+    ...flat(validateConsolidatedMetadataV3(value)),
+    ...consolidatedSemantics(value),
+  ],
+  v2_array: (value) => flat(validateArrayMetadataV2(value)),
+  v2_group: (value) => flat(validateGroupMetadataV2(value)),
+  v2_consolidated: (value) => flat(validateConsolidatedMetadataV2(value)),
 };
 
 interface ConformanceCase {
@@ -76,7 +98,7 @@ for (const kind of kinds) {
         // runner gets this via KeyError).
         expect(Object.hasOwn(testCase, "document")).toBe(true);
         expect(Array.isArray(testCase.problems)).toBe(true);
-        const actual = flattenTree(validator(testCase.document));
+        const actual = validator(testCase.document);
         expect(canonical(actual)).toEqual(canonical(testCase.problems));
       });
     }

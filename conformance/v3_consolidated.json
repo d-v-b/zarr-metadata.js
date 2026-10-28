@@ -1,0 +1,636 @@
+[
+  {
+    "description": "valid listing with an array, a group, and a node below the group",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "a": {
+          "zarr_format": 3,
+          "node_type": "array",
+          "shape": [
+            10
+          ],
+          "data_type": "float64",
+          "chunk_grid": {
+            "name": "regular",
+            "configuration": {
+              "chunk_shape": [
+                5
+              ]
+            }
+          },
+          "chunk_key_encoding": "default",
+          "fill_value": 0,
+          "codecs": [
+            {
+              "name": "bytes",
+              "configuration": {
+                "endian": "little"
+              }
+            }
+          ]
+        },
+        "g": {
+          "zarr_format": 3,
+          "node_type": "group",
+          "attributes": {
+            "x": 1
+          }
+        },
+        "g/b": {
+          "zarr_format": 3,
+          "node_type": "array",
+          "shape": [
+            4
+          ],
+          "data_type": "float64",
+          "chunk_grid": {
+            "name": "regular",
+            "configuration": {
+              "chunk_shape": [
+                2
+              ]
+            }
+          },
+          "chunk_key_encoding": "default",
+          "fill_value": 0,
+          "codecs": [
+            {
+              "name": "bytes",
+              "configuration": {
+                "endian": "little"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "problems": []
+  },
+  {
+    "description": "member that is not an object",
+    "document": [],
+    "problems": [
+      {
+        "loc": [],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "envelope missing every member",
+    "document": {},
+    "problems": [
+      {
+        "loc": [
+          "kind"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "must_understand"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "envelope with an unexpected member and wrong literals",
+    "document": {
+      "kind": "external",
+      "must_understand": true,
+      "metadata": {},
+      "extra": 1
+    },
+    "problems": [
+      {
+        "loc": [
+          "kind"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "must_understand"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "extra"
+        ],
+        "kind": "unknown_key"
+      }
+    ]
+  },
+  {
+    "description": "entry that is not an object",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "a": 5
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "a"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "entry without a node_type",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "a": {
+          "zarr_format": 3
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "a",
+          "node_type"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "entry with neither a zarr_format nor a node_type",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "a": {}
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "a",
+          "zarr_format"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "a",
+          "node_type"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "entries whose node_type is neither array nor group",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "a": {
+          "zarr_format": 3,
+          "node_type": "grp"
+        },
+        "b": {
+          "zarr_format": 2,
+          "node_type": 5
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "a",
+          "node_type"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "b",
+          "zarr_format"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "b",
+          "node_type"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "array entry missing its required keys",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "arr": {
+          "zarr_format": 3,
+          "node_type": "array"
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "arr",
+          "chunk_grid"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "arr",
+          "chunk_key_encoding"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "arr",
+          "codecs"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "arr",
+          "data_type"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "arr",
+          "fill_value"
+        ],
+        "kind": "missing_key"
+      },
+      {
+        "loc": [
+          "metadata",
+          "arr",
+          "shape"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "group entry with a v2 zarr_format and attributes that are not an object",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "g": {
+          "zarr_format": 2,
+          "node_type": "group",
+          "attributes": 5
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "g",
+          "zarr_format"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "g",
+          "attributes"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "keys that are not node paths below the group",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "": {
+          "zarr_format": 3,
+          "node_type": "group"
+        },
+        "/a": {
+          "zarr_format": 3,
+          "node_type": "group"
+        },
+        "b/": {
+          "zarr_format": 3,
+          "node_type": "group"
+        },
+        "c//d": {
+          "zarr_format": 3,
+          "node_type": "group"
+        },
+        "__e": {
+          "zarr_format": 3,
+          "node_type": "group"
+        },
+        "zarr.json": {
+          "zarr_format": 3,
+          "node_type": "group"
+        },
+        "..": {
+          "zarr_format": 3,
+          "node_type": "group"
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          ""
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "/a"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "b/"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "c//d"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "__e"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "zarr.json"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          ".."
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "a node below an array, and a node whose group is not listed",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "a": {
+          "zarr_format": 3,
+          "node_type": "array",
+          "shape": [
+            10
+          ],
+          "data_type": "float64",
+          "chunk_grid": {
+            "name": "regular",
+            "configuration": {
+              "chunk_shape": [
+                5
+              ]
+            }
+          },
+          "chunk_key_encoding": "default",
+          "fill_value": 0,
+          "codecs": [
+            {
+              "name": "bytes",
+              "configuration": {
+                "endian": "little"
+              }
+            }
+          ]
+        },
+        "a/b": {
+          "zarr_format": 3,
+          "node_type": "group"
+        },
+        "c/d/e": {
+          "zarr_format": 3,
+          "node_type": "group"
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "a/b"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "c/d"
+        ],
+        "kind": "missing_key"
+      }
+    ]
+  },
+  {
+    "description": "a listed group's own listing must agree with the outer listing",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "g": {
+          "zarr_format": 3,
+          "node_type": "group",
+          "consolidated_metadata": {
+            "kind": "inline",
+            "must_understand": false,
+            "metadata": {
+              "x": {
+                "zarr_format": 3,
+                "node_type": "group"
+              },
+              "y": {
+                "zarr_format": 3,
+                "node_type": "group"
+              }
+            }
+          }
+        },
+        "g/y": {
+          "zarr_format": 3,
+          "node_type": "array",
+          "shape": [
+            10
+          ],
+          "data_type": "float64",
+          "chunk_grid": {
+            "name": "regular",
+            "configuration": {
+              "chunk_shape": [
+                5
+              ]
+            }
+          },
+          "chunk_key_encoding": "default",
+          "fill_value": 0,
+          "codecs": [
+            {
+              "name": "bytes",
+              "configuration": {
+                "endian": "little"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "g",
+          "consolidated_metadata",
+          "metadata",
+          "x"
+        ],
+        "kind": "invalid_value"
+      },
+      {
+        "loc": [
+          "metadata",
+          "g",
+          "consolidated_metadata",
+          "metadata",
+          "y"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  },
+  {
+    "description": "a listed group's own listing is read only when the group has no problem",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "g": {
+          "zarr_format": 3,
+          "node_type": "group",
+          "attributes": 5,
+          "consolidated_metadata": {
+            "kind": "inline",
+            "must_understand": false,
+            "metadata": {
+              "x": 5
+            }
+          }
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "g",
+          "attributes"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "a listed group's own listing is read in full",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "g": {
+          "zarr_format": 3,
+          "node_type": "group",
+          "consolidated_metadata": {
+            "kind": "inline",
+            "must_understand": false,
+            "metadata": {
+              "x": 5
+            }
+          }
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "g",
+          "consolidated_metadata",
+          "metadata",
+          "x"
+        ],
+        "kind": "invalid_type"
+      },
+      {
+        "loc": [
+          "metadata",
+          "g",
+          "consolidated_metadata",
+          "metadata",
+          "x"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
+  }
+]

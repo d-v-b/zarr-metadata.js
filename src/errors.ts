@@ -23,8 +23,18 @@
  * - `invalid_value`: a value has an acceptable type but invalid content
  *   (e.g. `zarr_format: 2` in a v3 document, `order: "Q"`).
  * - `invalid_json`: bytes/text that do not decode as JSON.
+ * - `unknown_key`: a key that a closed object does not declare (an extra
+ *   member of a metadata field envelope, of a `.zgroup`, or of a
+ *   configuration the semantic layer interprets). It has its own kind
+ *   because whether a configuration is closed is rarely stated by the
+ *   spec, and a consumer may choose to tolerate such keys.
  */
-export type IssueKind = "missing_key" | "invalid_type" | "invalid_value" | "invalid_json";
+export type IssueKind =
+  | "missing_key"
+  | "invalid_type"
+  | "invalid_value"
+  | "invalid_json"
+  | "unknown_key";
 
 /** One problem, attached to the tree node whose document location it describes. */
 export interface Issue {

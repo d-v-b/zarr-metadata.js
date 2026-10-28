@@ -76,13 +76,10 @@ describe("nesting depth cap", () => {
         filters: null,
       }),
     );
-    expect(problems).toEqual([
-      {
-        path: ["dtype"],
-        message: "expected a v2 dtype string or a sequence of field records",
-        kind: "invalid_type",
-      },
-    ]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]!.path[0]).toBe("dtype");
+    expect(problems[0]!.kind).toBe("invalid_value");
+    expect(problems[0]!.message).toContain("nesting depth");
   });
 });
 
@@ -103,14 +100,14 @@ describe("non-plain objects are not mappings", () => {
 
   it("reports a single root invalid_type for a non-mapping document, like Python", () => {
     expect(flattenTree(validateArrayMetadataV2(new Date()))).toEqual([
-      { path: [], message: "expected a mapping", kind: "invalid_type" },
+      { path: [], message: "expected an object", kind: "invalid_type" },
     ]);
   });
 
   it("rejects a Date in attributes instead of validating it as empty", () => {
     const problems = flattenTree(validateArrayMetadataV3({ ...VALID_ARRAY, attributes: new Date() }));
     expect(problems).toEqual([
-      { path: ["attributes"], message: "expected a mapping with string keys", kind: "invalid_type" },
+      { path: ["attributes"], message: "expected an object with string keys", kind: "invalid_type" },
     ]);
   });
 });
@@ -187,7 +184,11 @@ describe("group ↔ consolidated recursion depth cap (round 2)", () => {
     const problems = flattenTree(validateGroupMetadataV3(deep));
     expect(problems).toHaveLength(1);
     expect(problems[0]!.message).toContain("nesting depth");
-    expect(flattenTree(validateMetadataV3(deep))).toHaveLength(1);
+    // The dispatcher also reads the listed documents, which meet the cap
+    // again below the group's own envelope.
+    const deepProblems = flattenTree(validateMetadataV3(deep));
+    expect(deepProblems.length).toBeGreaterThan(0);
+    expect(deepProblems.every((issue) => issue.message.includes("nesting depth"))).toBe(true);
     // Shallow chains still validate cleanly.
     expect(flattenTree(validateGroupMetadataV3(nestedGroups(10)))).toEqual([]);
   });
@@ -225,10 +226,10 @@ describe("dense-array requirement (round 2)", () => {
       fill_value: 0,
       order: "C",
       filters: null,
-    }))).toEqual([{ path: ["shape"], message: "expected a sequence of int", kind: "invalid_type" }]);
+    }))).toEqual([{ path: ["shape"], message: "expected an array of integers", kind: "invalid_type" }]);
     const problems = flattenTree(validateArrayMetadataV3({ ...VALID_ARRAY, dimension_names: [, "x"] })); // eslint-disable-line no-sparse-arrays
     expect(problems).toEqual([
-      { path: ["dimension_names"], message: "expected a sequence", kind: "invalid_type" },
+      { path: ["dimension_names"], message: "expected an array", kind: "invalid_type" },
     ]);
   });
 });

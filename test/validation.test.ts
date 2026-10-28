@@ -94,7 +94,11 @@ describe("parse and safeParse", () => {
     expect(bad.success).toBe(false);
     if (!bad.success) {
       expect(flattenTree(bad.errors)).toEqual([
-        { path: ["codecs"], message: "expected at least one codec", kind: "invalid_value" },
+        {
+          path: ["codecs"],
+          message: "expected an array -> bytes codec, got none",
+          kind: "invalid_value",
+        },
       ]);
     }
   });
@@ -232,6 +236,7 @@ describe("validateConsolidatedDocumentsV2", () => {
     );
     expect(issues).toHaveLength(1);
     expect(issues[0]!.path).toEqual(["metadata", ".zgroup", "attributes"]);
-    expect(issues[0]!.message).toContain("sibling .zattrs");
+    expect(issues[0]!.kind).toBe("unknown_key");
+    expect(issues[0]!.message).toContain("belong in .zattrs");
   });
 });

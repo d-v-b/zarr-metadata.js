@@ -55,7 +55,12 @@
             "chunk_key_encoding": "default",
             "fill_value": 0,
             "codecs": [
-              "bytes"
+              {
+                "name": "bytes",
+                "configuration": {
+                  "endian": "little"
+                }
+              }
             ]
           },
           "child_group": {
@@ -68,13 +73,20 @@
     "problems": []
   },
   {
-    "description": "consolidated_metadata: null (historical zarr-python bug) is structurally accepted",
+    "description": "consolidated_metadata: null (a historical zarr-python bug) is refused",
     "document": {
       "zarr_format": 3,
       "node_type": "group",
       "consolidated_metadata": null
     },
-    "problems": []
+    "problems": [
+      {
+        "loc": [
+          "consolidated_metadata"
+        ],
+        "kind": "invalid_type"
+      }
+    ]
   },
   {
     "description": "missing node_type",
@@ -130,106 +142,6 @@
           "must_understand"
         ],
         "kind": "invalid_value"
-      }
-    ]
-  },
-  {
-    "description": "consolidated entry without a usable node_type",
-    "document": {
-      "zarr_format": 3,
-      "node_type": "group",
-      "consolidated_metadata": {
-        "kind": "inline",
-        "must_understand": false,
-        "metadata": {
-          "a": {
-            "zarr_format": 3
-          }
-        }
-      }
-    },
-    "problems": [
-      {
-        "loc": [
-          "consolidated_metadata",
-          "metadata",
-          "a",
-          "node_type"
-        ],
-        "kind": "invalid_value"
-      }
-    ]
-  },
-  {
-    "description": "consolidated array entry missing its required keys",
-    "document": {
-      "zarr_format": 3,
-      "node_type": "group",
-      "consolidated_metadata": {
-        "kind": "inline",
-        "must_understand": false,
-        "metadata": {
-          "arr": {
-            "zarr_format": 3,
-            "node_type": "array"
-          }
-        }
-      }
-    },
-    "problems": [
-      {
-        "loc": [
-          "consolidated_metadata",
-          "metadata",
-          "arr",
-          "chunk_grid"
-        ],
-        "kind": "missing_key"
-      },
-      {
-        "loc": [
-          "consolidated_metadata",
-          "metadata",
-          "arr",
-          "chunk_key_encoding"
-        ],
-        "kind": "missing_key"
-      },
-      {
-        "loc": [
-          "consolidated_metadata",
-          "metadata",
-          "arr",
-          "codecs"
-        ],
-        "kind": "missing_key"
-      },
-      {
-        "loc": [
-          "consolidated_metadata",
-          "metadata",
-          "arr",
-          "data_type"
-        ],
-        "kind": "missing_key"
-      },
-      {
-        "loc": [
-          "consolidated_metadata",
-          "metadata",
-          "arr",
-          "fill_value"
-        ],
-        "kind": "missing_key"
-      },
-      {
-        "loc": [
-          "consolidated_metadata",
-          "metadata",
-          "arr",
-          "shape"
-        ],
-        "kind": "missing_key"
       }
     ]
   },
@@ -309,7 +221,7 @@
           "consolidated_metadata",
           "extra"
         ],
-        "kind": "invalid_value"
+        "kind": "unknown_key"
       },
       {
         "loc": [
@@ -321,7 +233,7 @@
     ]
   },
   {
-    "description": "invalid group entry inside consolidated metadata (nested loc prefixing)",
+    "description": "a group document checks the consolidated envelope, not the documents it lists",
     "document": {
       "zarr_format": 3,
       "node_type": "group",
@@ -344,22 +256,47 @@
           "kind"
         ],
         "kind": "invalid_value"
-      },
+      }
+    ]
+  },
+  {
+    "description": "zarr_format of the wrong JSON type",
+    "document": {
+      "zarr_format": "3",
+      "node_type": "group"
+    },
+    "problems": [
       {
         "loc": [
-          "consolidated_metadata",
-          "metadata",
-          "g",
           "zarr_format"
         ],
-        "kind": "invalid_value"
+        "kind": "invalid_type"
+      }
+    ]
+  },
+  {
+    "description": "consolidated envelope with kind and must_understand of the wrong JSON type",
+    "document": {
+      "zarr_format": 3,
+      "node_type": "group",
+      "consolidated_metadata": {
+        "kind": 1,
+        "must_understand": "no",
+        "metadata": {}
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "consolidated_metadata",
+          "kind"
+        ],
+        "kind": "invalid_type"
       },
       {
         "loc": [
           "consolidated_metadata",
-          "metadata",
-          "g",
-          "attributes"
+          "must_understand"
         ],
         "kind": "invalid_type"
       }
