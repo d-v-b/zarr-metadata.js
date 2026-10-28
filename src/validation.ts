@@ -1407,7 +1407,9 @@ export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
 
 /** `JSON.stringify`, but writing each non-finite number as the bare token Python's `json` module writes. */
 function stringifyNonFinite(value: unknown, indent: number | string | undefined): string {
-  const nonce = freshNonce("");
+  // Chosen against the document's own text, as on the read path, so no
+  // string in the document can hold a marker.
+  const nonce = freshNonce(JSON.stringify(value) ?? "");
   const text = JSON.stringify(
     value,
     (_key, item: unknown) => {
