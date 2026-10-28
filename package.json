@@ -1,6 +1,6 @@
 {
   "name": "zarr-metadata",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Spec-defined metadata types and validators for Zarr v2 and v3.",
   "license": "MIT",
   "type": "module",

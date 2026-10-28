@@ -1,5 +1,25 @@
 # zarr-metadata
 
+## 0.10.0
+
+### Minor Changes
+
+- 6eb15aa: Stores written by zarr-python with a NaN or infinite number in attributes can now be read. zarr-python writes such a value (an xarray `_FillValue` or a CF `missing_value`, for example) as a bare `NaN`, `Infinity` or `-Infinity`, which `loadStoreJson` refused as invalid JSON. It now reads these tokens, and the validators accept non-finite numbers in attributes, in extension fields nothing interprets, and in `.zattrs` entries, as zarr-metadata 0.6.0 does, while still refusing them wherever the spec interprets a value, such as `fill_value`. `dumpStoreJson(value, { allowNonFinite: true })` writes them back as the same tokens.
+- 6eb15aa: The semantic layer (`validateArraySemanticsV3`, `validateSemanticsV3`) now applies the rules zarr-metadata 0.6.0 applies in its default scope, and the conformance corpus checks it against that release. Together with the structural validators it reports what the Python readers report.
+  
+  - Every codec, chunk grid, chunk key encoding and data type the reference defines is read through its definition: `blosc`, `bytes`, `cast_value`, `crc32c`, `gzip`, `scale_offset`, `sharding_indexed`, `transpose` and `zstd`; `regular` and `rectilinear`; `default` and `v2`; and every core and convention data type. A configuration value out of range, of the wrong type, or outside its closed set is a problem, and so is a key the configuration does not declare (`unknown_key`). A missing configuration is reported at `<field>.configuration`.
+  - The codecs are read as a pipeline: array -> array codecs, one array -> bytes codec, then bytes -> bytes codecs, each judged against the chunk it receives. A `bytes` codec needs an `endian` for values of several bytes and refuses variable-length values; a shard's index codecs must be of static size and receive `uint64` values; a shard's inner chunk length is reported per axis.
+  - Fill values report `invalid_type` for the wrong JSON type and `invalid_value` for a value out of range. A struct needs at least one field, distinct non-empty names, and fixed-size field types.
+  - Fixed: a rectilinear grid's chunk lengths may exceed the dimension's length, as the spec allows ("MUST equal or exceed"); they were required to sum to it exactly. Fixed: no rule reads a `shape` that has its own problem.
+  - The `ChunkGridVerdict` type is no longer exported: the semantic layer's internal machinery changed, and the configuration types (`RegularChunkGridConfiguration` and the others) remain the public description of what each name takes.
+- 6eb15aa: The structural validators now report what zarr-metadata 0.6.0, the Python reference, reports, and the conformance corpus is checked against that release. This changes some verdicts:
+  
+  - `must_understand: false` is refused on codecs and storage transformers, as on `data_type`, `chunk_grid` and `chunk_key_encoding`: ignoring a codec gives wrong bytes.
+  - Every v3 metadata field name must be a valid extension name (`^[a-z][a-z0-9-_.]+$`) or a URI.
+  - A key that a closed object does not declare is reported with the new kind `unknown_key` instead of `invalid_value`. A value of the wrong JSON type for a fixed literal (`zarr_format: "3"`) is `invalid_type`. A metadata field object without a `name` is `missing_key`.
+  - `consolidated_metadata: null` is refused. `validateGroupMetadataV3` checks only the envelope of `consolidated_metadata`; `validateConsolidatedMetadataV3` reads the listed documents, including the rules that their keys are node paths, that they form a hierarchy, and that a group listed twice reads the same in both listings. `validateMetadataV3` still reads both for a group.
+  - A v2 `.zarray` may hold members the spec does not define, `filters: []` is accepted, a v2 dtype string must be a NumPy typestr, a codec id must not be empty, and problems in codec ids and field records are located at the id or record. `validateConsolidatedMetadataV2` now reads each `.zarray` and `.zgroup` entry as a node, so `validateConsolidatedDocumentsV2` is deprecated; neither checks a `.zattrs` entry that has no node beside it.
+
 ## 0.9.0
 
 ### Minor Changes
