@@ -40,6 +40,15 @@ export function show(value: unknown): string {
   }
 }
 
+/**
+ * Set `key` on `target` as an own data property. Plain assignment would
+ * treat a `"__proto__"` key, which `JSON.parse` makes an ordinary key, as
+ * the object's prototype.
+ */
+export function defineOwn(target: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
+}
+
 export function isObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const proto: unknown = Object.getPrototypeOf(value);
@@ -211,13 +220,13 @@ export function objectOf(members: Readonly<Record<string, Member>>, extra?: Pars
         continue;
       }
       const parsed = extra(entry, [...path, key]);
-      typed[key] = parsed.value;
+      defineOwn(typed, key, parsed.value);
       issues.push(...parsed.issues);
     }
     for (const [key, member] of Object.entries(members)) {
       if (Object.hasOwn(value, key)) {
         const parsed = member.parse(value[key], [...path, key]);
-        typed[key] = parsed.value;
+        defineOwn(typed, key, parsed.value);
         issues.push(...parsed.issues);
       } else if (member.required) {
         issues.push(issue([...path, key], `missing required key ${show(key)}`, "missing_key"));
@@ -247,7 +256,7 @@ export function mappingOf(entry: Parser): Parser {
     const issues: PathedIssue[] = [];
     for (const [key, item] of Object.entries(value)) {
       const parsed = entry(item, [...path, key]);
-      typed[key] = parsed.value;
+      defineOwn(typed, key, parsed.value);
       issues.push(...parsed.issues);
     }
     return { value: typed, issues };

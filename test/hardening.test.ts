@@ -16,6 +16,7 @@ import {
   parseJson,
   validateArrayMetadataV2,
   validateArrayMetadataV3,
+  validateArraySemanticsV3,
   validateConsolidatedMetadataV2,
   validateConsolidatedMetadataV3,
   validateGroupMetadataV3,
@@ -188,6 +189,25 @@ describe("dumpStoreJson", () => {
     expect(new TextDecoder().decode(bytes)).toContain('"_FillValue":NaN,"range":[-Infinity,Infinity]');
     expect(loadStoreJson({ "zarr.json": bytes }, "zarr.json")).toEqual(document);
     expect(() => dumpStoreJson(new Map(), { allowNonFinite: true })).toThrow(MetadataValidationError);
+  });
+});
+
+describe("a \"__proto__\" key", () => {
+  it("is read as an ordinary key, as JSON.parse reads it", () => {
+    const struct = {
+      name: "struct",
+      configuration: { fields: [{ name: "__proto__", data_type: "int8" }] },
+    };
+    const doc = (fill: string) => JSON.parse(
+      `{"zarr_format":3,"node_type":"array","shape":[4],"data_type":${JSON.stringify(struct)},` +
+        `"chunk_grid":{"name":"regular","configuration":{"chunk_shape":[2]}},` +
+        `"chunk_key_encoding":"default","fill_value":${fill},"codecs":["bytes"]}`,
+    ) as unknown;
+    const problems = (fill: string) =>
+      flattenTree(validateArraySemanticsV3(doc(fill))).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems('{"__proto__": 0}')).toEqual([]);
+    expect(problems('{"__proto__": 0, "x": 1}')).toEqual(["fill_value.x: unknown_key"]);
+    expect(problems("{}")).toEqual(["fill_value.__proto__: missing_key"]);
   });
 });
 

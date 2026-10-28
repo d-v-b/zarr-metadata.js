@@ -25,7 +25,7 @@
  */
 import type { IssuePath, PathedIssue } from "./errors.js";
 import { flattenTree } from "./errors.js";
-import { isObject, issue, objectOf, show, type Member, type Parser } from "./typed.js";
+import { defineOwn, isObject, issue, objectOf, show, type Member, type Parser } from "./typed.js";
 import { validateMetadataFieldV3 } from "./validation.js";
 
 /** The kinds of v3 metadata field, each read from its own document member. */
@@ -252,7 +252,7 @@ function putBack(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(putBack);
   if (isObject(value)) {
     const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) out[key] = putBack(entry);
+    for (const [key, entry] of Object.entries(value)) defineOwn(out, key, putBack(entry));
     return out;
   }
   return value;

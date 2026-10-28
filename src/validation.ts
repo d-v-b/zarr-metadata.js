@@ -908,13 +908,10 @@ function sortedJson(value: unknown): string {
  */
 function groupsReadAlike(one: unknown, other: unknown): boolean {
   if (groupMetadataV3Problems(one).length > 0 || groupMetadataV3Problems(other).length > 0) return true;
+  const spec = [...GROUP_METADATA_STANDARD_KEYS_V3, ZARR_V3_CONSOLIDATED_METADATA_KEY] as string[];
   const key = (doc: Record<string, unknown>): string => {
-    const extra: Record<string, unknown> = {};
-    for (const [member, value] of Object.entries(doc)) {
-      if (![...GROUP_METADATA_STANDARD_KEYS_V3, ZARR_V3_CONSOLIDATED_METADATA_KEY].includes(member)) {
-        extra[member] = value;
-      }
-    }
+    // fromEntries keeps a "__proto__" member as an own key.
+    const extra = Object.fromEntries(Object.entries(doc).filter(([member]) => !spec.includes(member)));
     return sortedJson([doc["attributes"] ?? {}, extra]);
   };
   return key(one as Record<string, unknown>) === key(other as Record<string, unknown>);
