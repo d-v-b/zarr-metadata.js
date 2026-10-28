@@ -3,7 +3,7 @@
  * fixtures must be JSON text: hostile runtime values (depth bombs, cycles,
  * BigInt, non-plain objects) and the byte-level store entry points.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   dumpStoreJson,
@@ -205,10 +205,30 @@ describe("dumpStoreJson", () => {
     expect(() => dumpStoreJson(new Map())).toThrow(MetadataValidationError);
   });
 
-  it("keeps a string that reads like the internal token marker as written", () => {
-    const document = { attributes: { a: NaN, note: "\u0000zarr-metadata-x-NaN" } };
-    const bytes = dumpStoreJson(document, { allowNonFinite: true });
-    expect(loadStoreJson({ k: bytes }, "k")).toEqual(document);
+  describe("when the document already holds the marker the first draw would give", () => {
+    // The token markers carry a nonce drawn from Math.random; forcing the
+    // first draw makes the document collide with it, so only a nonce chosen
+    // against the document's own text keeps the document as written.
+    const first = 0.123456789;
+    const marker = `\u0000zarr-metadata-${first.toString(36).slice(2)}-NaN`;
+    const forceDraws = () => vi.spyOn(Math, "random").mockReturnValueOnce(first).mockReturnValueOnce(0.987654321);
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("writes the string as written", () => {
+      forceDraws();
+      const document = { attributes: { a: NaN, note: marker } };
+      const text = new TextDecoder().decode(dumpStoreJson(document, { allowNonFinite: true }));
+      expect(text).toContain('"a":NaN');
+      expect(JSON.parse(text.replace("NaN", "null"))).toEqual({ attributes: { a: null, note: marker } });
+    });
+
+    it("reads the string as written, as a key", () => {
+      forceDraws();
+      const text = `{${JSON.stringify(marker)}: 1, "a": NaN}`;
+      expect(loadStoreJson({ k: text }, "k")).toEqual({ [marker]: 1, a: NaN });
+    });
   });
 
   it("writes non-finite numbers as bare tokens when asked, and reads them back", () => {
@@ -411,27 +431,53 @@ describe("group ↔ consolidated recursion depth cap (round 2)", () => {
     expect(flattenTree(validateGroupMetadataV3(nestedGroups(10)))).toEqual([]);
   });
 
-  it("stops both layers at the same nested listing", () => {
+  it("stops both layers at the same nested listing, wherever the depth cap falls", () => {
     // A chain of listed groups, each listing the next, with an array that
-    // breaks a semantic rule in the deepest listing. Each listed group's
-    // JSON check walks the listings below it, so the depth cap is met at
-    // the 22nd listing, and both layers stop there.
+    // breaks a semantic rule in the deepest listing. Each listed group's own
+    // check walks the listings below it as JSON, so a long enough chain
+    // meets the depth cap inside the first listed group's listing; neither
+    // layer then reads further. The planted problem must be judged exactly
+    // when no depth problem is reported, whatever MAX_JSON_DEPTH is.
     const listing = (metadata: Record<string, unknown>) => ({ kind: "inline", must_understand: false, metadata });
+    const planted = {
+      zarr_format: 3,
+      node_type: "array",
+      shape: [4],
+      data_type: "int8",
+      chunk_grid: { name: "regular", configuration: { chunk_shape: [2] } },
+      chunk_key_encoding: "default",
+      fill_value: 300,
+      codecs: ["bytes"],
+    };
     const chain = (levels: number) => {
-      let metadata: Record<string, unknown> = { a: { ...VALID_ARRAY, data_type: "int8", fill_value: 300 } };
+      let metadata: Record<string, unknown> = { a: planted };
       for (let level = 0; level < levels; level++) {
         metadata = { g: { zarr_format: 3, node_type: "group", consolidated_metadata: listing(metadata) } };
       }
       return { zarr_format: 3, node_type: "group", consolidated_metadata: listing(metadata) };
     };
-    const read = (levels: number) => ({
-      depth: flattenTree(validateMetadataV3(chain(levels))).some((issue) => issue.message.includes("nesting depth")),
-      deepest: flattenTree(validateSemanticsV3(chain(levels))).some(
-        (issue) => issue.path.filter((part) => part === "g").length === levels,
-      ),
-    });
-    expect(read(21)).toEqual({ depth: false, deepest: true });
-    expect(read(22)).toEqual({ depth: true, deepest: false });
+    const inFirstListing = ["consolidated_metadata", "metadata", "g", "consolidated_metadata", "metadata"];
+    const seen = new Set<boolean>();
+    for (let levels = 1; levels <= MAX_JSON_DEPTH / 2; levels++) {
+      const depth = flattenTree(validateMetadataV3(chain(levels))).filter((issue) =>
+        issue.message.includes("nesting depth"),
+      );
+      for (const issue of depth) expect(issue.path.slice(0, inFirstListing.length)).toEqual(inFirstListing);
+      const plantedAt = [
+        "consolidated_metadata",
+        ...Array.from({ length: levels }, () => ["metadata", "g", "consolidated_metadata"]).flat(),
+        "metadata",
+        "a",
+        "fill_value",
+      ];
+      const judged = flattenTree(validateSemanticsV3(chain(levels))).some(
+        (issue) => issue.kind === "invalid_value" && JSON.stringify(issue.path) === JSON.stringify(plantedAt),
+      );
+      expect(judged, `${levels} levels`).toBe(depth.length === 0);
+      seen.add(judged);
+    }
+    // The range crosses the cap, so both outcomes were checked.
+    expect([...seen].sort()).toEqual([false, true]);
   });
 
   it("terminates on a circular consolidated graph", async () => {
