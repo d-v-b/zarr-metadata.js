@@ -76,20 +76,41 @@ package's flat problem lists; `flattenTree`/`treeOf` convert between the
 two, and the flat path+kind form remains the cross-language interchange
 format the conformance corpus asserts on.
 
-The structural validators check key presence, value shapes, and fixed
-literals without interpreting extension points, matching the Python
-package's layering. The semantic layer (`validateSemanticsV3` /
-`validateArraySemanticsV3`) is TS-only and sits on top, organized by
-content: `chunk-grid/`, `codec/`, and `data-type/` hold one module per
-interpreted name, each with its syntax (configuration and fill-value
-types) and semantics (required members, cross-field prose rules — grid
-arity and sums, transpose permutations, sharding divisibility, fill_value
-vs data type). Interpreted data types cover the core scalars, the `r<N>`
-raw-bits family, and the established zarr-extensions conventions —
-`string`, `bytes`, `numpy.datetime64`/`timedelta64`, and `struct` (whose
-fill is judged per field, recursively). `semantics.ts` is the
-document-walking orchestrator. Unrecognized names are skipped — the
-extension name space is open.
+Validation has two layers, and together they report what the Python
+readers (`read_array_metadata_v3` and friends, zarr-metadata 0.6.0) report
+in their default scope:
+
+- The structural validators (`validate*`) check key presence, value
+  shapes, fixed literals, the metadata field envelope and its extension
+  names, v2 typestrs and field records, and the hierarchy a consolidated
+  listing forms, without interpreting what a name means.
+- The semantic layer (`validateSemanticsV3` / `validateArraySemanticsV3`)
+  reads each v3 extension point through the definition that claims its
+  name, organized by content: `chunk-grid/`, `chunk-key-encoding/`,
+  `codec/`, and `data-type/` hold one module per interpreted name, each
+  with its configuration type and rules. Then the cross-field rules run:
+  the fill value against the data type, the chunk grid against the shape,
+  and the codecs as a pipeline, each judged against the chunk it receives
+  (array -> array, then one array -> bytes, then bytes -> bytes; `endian`
+  for multi-byte values; a shard's inner chunks and its `uint64` index).
+  The interpreted names are those of the reference's
+  `CORE_AND_EXTENSIONS` scope: the codecs `blosc`, `bytes`, `cast_value`,
+  `crc32c`, `gzip`, `scale_offset`, `sharding_indexed`, `transpose` and
+  `zstd`; the `regular` and `rectilinear` grids; the `default` and `v2`
+  chunk key encodings; and the core data types, `r<N>` raw bits, `string`,
+  `bytes`, `numpy.datetime64`/`timedelta64` and `struct`. Unrecognized
+  names are left unjudged — the extension name space is open — and so is
+  everything that would depend on them.
+
+A value of the wrong JSON type is an `invalid_type`, a value of the right
+type outside its closed set or range is an `invalid_value`, and a key a
+closed object does not declare is an `unknown_key`.
+
+Known differences from the reference implementation: v2 documents get
+the structural checks only (the reference also checks numpy dtype
+families, fill values against the dtype, and numcodecs configurations);
+two listings of one array in nested consolidated metadata are not
+compared; and `JSON.parse` cannot tell `1.0` from `1`.
 
 Consumers include the
 [Zarr Metadata VS Code extension](https://github.com/d-v-b/vscode-zarr).
@@ -98,9 +119,10 @@ Consumers include the
 
 The [conformance corpus](https://github.com/d-v-b/zarr-metadata.js/tree/main/conformance) is the contract with the Python
 reference implementation: shared JSON fixtures asserting the exact problem
-set (loc + kind) each document must produce. Both test suites run every
-case; a spec change updates the corpus first, turning both implementations
-red until each is fixed.
+set (loc + kind) each document must produce, for structure and semantics
+alike. Both test suites run every case, the Python side against a pinned
+release; a spec change updates the corpus first, turning both
+implementations red until each is fixed.
 
 ## Development
 
@@ -113,7 +135,7 @@ just install       # npm install
 just build         # tsc → dist/
 just test          # vitest: conformance corpus + unit tests
 just typecheck     # sources and tests, including type-level assertions
-just conformance   # corpus vs the Python reference (PyPI by default)
+just conformance   # corpus vs the Python reference (the pinned PyPI release by default)
 just check         # everything CI runs
 ```
 
