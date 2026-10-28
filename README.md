@@ -19,7 +19,7 @@ const errors = validateMetadataV3(JSON.parse(text));
 if (!isEmptyTree(errors)) {
   errors.children.get("codecs"); // the subtree of codec problems
   flattenTree(errors); // the flat view, for diagnostics:
-  // [{ path: ["codecs"], kind: "invalid_value", message: "expected at least one codec" }]
+  // [{ path: ["codecs"], kind: "invalid_value", message: "expected an array -> bytes codec, got none" }]
 }
 
 // Or the discriminated-union form:

@@ -18,37 +18,21 @@ npm token is stored anywhere).
 No changeset means no release — docs/CI-only PRs can skip it (or add an
 empty changeset with `npx changeset --empty` to record "no release").
 
-## One-time setup (not yet done)
+## Trusted publishing setup (done)
 
-Trusted publishing can only be configured for a package that already
-exists, so the first publish is manual:
+The first release, 0.1.0, was published by hand, since trusted publishing
+can only be configured for a package that already exists. Every release
+since 0.2.0 has been published by the Release workflow with provenance.
 
-1. From a clean checkout, as an npm user who will own the package:
+The npm package's **Trusted Publisher** setting names GitHub Actions with:
 
-   ```bash
-   npm run typecheck && npx vitest run
-   npm publish
-   ```
+- organization/user: `d-v-b`
+- repository: `zarr-metadata.js`
+- workflow filename: `release.yml`
+- environment: (empty)
 
-2. On npmjs.com → package **Settings** → **Trusted Publisher**, add
-   GitHub Actions with:
-   - organization/user: `d-v-b`
-   - repository: `zarr-metadata.js`
+The binding is keyed to the repository NAME: renaming the GitHub
+repository breaks publishing until this setting is updated to match.
+Publishing needs npm ≥ 11.5.1, which the workflow's node 24 bundles.
 
-   The trusted-publisher binding is keyed to the repository NAME: renaming
-   the GitHub repository breaks it until this setting is updated to match.
-   - workflow filename: `release.yml`
-   - environment: (leave empty)
-
-3. Done — from here on the Release workflow publishes tokenlessly. Until
-   step 2 is completed, its publish step will fail with an auth error;
-   the Version Packages PR half works regardless.
-
-Publishing needs npm ≥ 11.5.1 (the workflow's node 24 bundles it; check
-locally with `npm --version` before the manual first publish).
-
-## Decisions still open
-
-- Whether `zarr-metadata` should be published unscoped (as currently
-  configured) or under an npm scope/org owned by zarr-developers — decide
-  before the first publish claims the name.
+The package is published unscoped, as `zarr-metadata`.
