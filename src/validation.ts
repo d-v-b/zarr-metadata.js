@@ -519,7 +519,7 @@ function fieldRecordV2Problems(
 
 /**
  * Return every reason `value` is not shaped like a v2 codec configuration:
- * an object with a string `id`, holding JSON.
+ * an object with a non-empty string `id`, holding JSON.
  */
 function codecV2Problems(value: unknown): PathedIssue[] {
   if (!isPlainObject(value)) {
@@ -529,6 +529,7 @@ function codecV2Problems(value: unknown): PathedIssue[] {
   if (typeof value["id"] !== "string") {
     return [problem(["id"], `expected a string codec id, got ${show(value["id"])}`, "invalid_type")];
   }
+  if (value["id"] === "") return [problem(["id"], 'expected a codec id, got ""', "invalid_value")];
   return jsonProblems(value);
 }
 
@@ -860,10 +861,49 @@ function consolidatedEntriesV3Problems(value: unknown, depth: number): PathedIss
             "invalid_value",
           ),
         );
+      } else if (flat === "group" && nested === "group" && !groupsReadAlike(entries[joined], entry)) {
+        // Two listings of one node must agree. Arrays are not compared here:
+        // the reference implementation compares their canonical spellings.
+        problems.push(
+          problem(
+            here,
+            `expected the document the group lists at ${show(`/${joined}`)}, got one that reads otherwise: one node, one document`,
+            "invalid_value",
+          ),
+        );
       }
     }
   }
   return problems;
+}
+
+/** `value` as JSON text with object keys sorted, so two values written alike compare equal. */
+function sortedJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(sortedJson).join(",")}]`;
+  if (isPlainObject(value)) {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${sortedJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * Whether two listings of one group read the same: the same attributes and
+ * the same extra fields, each group's own listing aside. Only two groups
+ * without problems of their own are compared.
+ */
+function groupsReadAlike(one: unknown, other: unknown): boolean {
+  if (groupMetadataV3Problems(one).length > 0 || groupMetadataV3Problems(other).length > 0) return true;
+  const key = (doc: Record<string, unknown>): string => {
+    const extra: Record<string, unknown> = {};
+    for (const [member, value] of Object.entries(doc)) {
+      if (![...GROUP_METADATA_STANDARD_KEYS_V3, ZARR_V3_CONSOLIDATED_METADATA_KEY].includes(member)) {
+        extra[member] = value;
+      }
+    }
+    return sortedJson([doc["attributes"] ?? {}, extra]);
+  };
+  return key(one as Record<string, unknown>) === key(other as Record<string, unknown>);
 }
 
 /**

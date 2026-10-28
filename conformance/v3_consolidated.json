@@ -755,5 +755,61 @@
         "kind": "missing_key"
       }
     ]
+  },
+  {
+    "description": "two listings of one group must read the same: attributes and extra fields",
+    "document": {
+      "kind": "inline",
+      "must_understand": false,
+      "metadata": {
+        "g": {
+          "zarr_format": 3,
+          "node_type": "group",
+          "consolidated_metadata": {
+            "kind": "inline",
+            "must_understand": false,
+            "metadata": {
+              "x": {
+                "zarr_format": 3,
+                "node_type": "group",
+                "attributes": {
+                  "a": 1
+                }
+              },
+              "y": {
+                "zarr_format": 3,
+                "node_type": "group",
+                "extra": {
+                  "must_understand": false
+                }
+              }
+            }
+          }
+        },
+        "g/x": {
+          "zarr_format": 3,
+          "node_type": "group"
+        },
+        "g/y": {
+          "zarr_format": 3,
+          "node_type": "group",
+          "extra": {
+            "must_understand": false
+          }
+        }
+      }
+    },
+    "problems": [
+      {
+        "loc": [
+          "metadata",
+          "g",
+          "consolidated_metadata",
+          "metadata",
+          "x"
+        ],
+        "kind": "invalid_value"
+      }
+    ]
   }
 ]
