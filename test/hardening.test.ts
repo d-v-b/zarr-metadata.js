@@ -20,6 +20,7 @@ import {
   validateConsolidatedMetadataV3,
   validateGroupMetadataV3,
   validateJson,
+  validateMetadataV3,
 } from "../src/index.js";
 
 const VALID_ARRAY = {
@@ -158,7 +159,7 @@ describe("loadStoreJson", () => {
   });
 
   it("reports malformed JSON, invalid UTF-8, and misplaced constants as invalid_json", () => {
-    for (const raw of ["{", new Uint8Array([0xff, 0xfe]), "[1 NaN]", "NaNa", "nan"]) {
+    for (const raw of ["{", new Uint8Array([0xff, 0xfe]), "[1 NaN]", "NaNa", "nan", '{NaN: 1}', '{"a": {Infinity: []}}']) {
       let kind: string | undefined;
       try {
         loadStoreJson({ key: raw }, "key");
@@ -191,8 +192,7 @@ describe("dumpStoreJson", () => {
 });
 
 describe("validateMetadataV3 on a group", () => {
-  it("reports a problem in a listed document once", async () => {
-    const { validateMetadataV3 } = await import("../src/index.js");
+  it("reports a problem in a listed document once", () => {
     const listed = { ...VALID_ARRAY, attributes: { a: new Map() } };
     const problems = flattenTree(
       validateMetadataV3({

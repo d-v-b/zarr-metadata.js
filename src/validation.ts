@@ -1319,12 +1319,34 @@ function parseJsonText(text: string): unknown {
     const marks = new Map<unknown, number>(
       NON_FINITE_TOKENS.map((token) => [nonFiniteMark(nonce, token), NON_FINITE_VALUES[token]]),
     );
+    let parsed: unknown;
     try {
-      return JSON.parse(out, (_key, value: unknown) => marks.get(value) ?? value);
+      parsed = JSON.parse(out, (_key, value: unknown) => marks.get(value) ?? value);
     } catch {
       throw error;
     }
+    // A token where an object key belongs (`{NaN: 1}`) became a key, which
+    // the reviver never sees; such text is not JSON either way.
+    if (holdsKeyWith(parsed, nonce)) throw error;
+    return parsed;
   }
+}
+
+/** Whether any object key inside `value` contains `fragment`. */
+function holdsKeyWith(value: unknown, fragment: string): boolean {
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const item = pending.pop();
+    if (Array.isArray(item)) {
+      pending.push(...item);
+    } else if (typeof item === "object" && item !== null) {
+      for (const [key, entry] of Object.entries(item)) {
+        if (key.includes(fragment)) return true;
+        pending.push(entry);
+      }
+    }
+  }
+  return false;
 }
 
 /**
