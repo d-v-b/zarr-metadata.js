@@ -190,6 +190,21 @@ describe("dumpStoreJson", () => {
   });
 });
 
+describe("validateMetadataV3 on a group", () => {
+  it("reports a problem in a listed document once", async () => {
+    const { validateMetadataV3 } = await import("../src/index.js");
+    const listed = { ...VALID_ARRAY, attributes: { a: new Map() } };
+    const problems = flattenTree(
+      validateMetadataV3({
+        zarr_format: 3,
+        node_type: "group",
+        consolidated_metadata: { kind: "inline", must_understand: false, metadata: { a: listed } },
+      }),
+    ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems).toEqual(["consolidated_metadata.metadata.a.attributes.a: invalid_type"]);
+  });
+});
+
 describe("non-finite numbers", () => {
   const paths = (tree: Parameters<typeof flattenTree>[0]) =>
     flattenTree(tree).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
@@ -253,11 +268,7 @@ describe("group ↔ consolidated recursion depth cap (round 2)", () => {
     const problems = flattenTree(validateGroupMetadataV3(deep));
     expect(problems).toHaveLength(1);
     expect(problems[0]!.message).toContain("nesting depth");
-    // The dispatcher also reads the listed documents, which meet the cap
-    // again below the group's own envelope.
-    const deepProblems = flattenTree(validateMetadataV3(deep));
-    expect(deepProblems.length).toBeGreaterThan(0);
-    expect(deepProblems.every((issue) => issue.message.includes("nesting depth"))).toBe(true);
+    expect(flattenTree(validateMetadataV3(deep))).toHaveLength(1);
     // Shallow chains still validate cleanly.
     expect(flattenTree(validateGroupMetadataV3(nestedGroups(10)))).toEqual([]);
   });

@@ -938,9 +938,11 @@ function consolidatedMetadataV3Problems(value: unknown): PathedIssue[] {
  * Checks structure, not domain validity. Unknown top-level keys are allowed
  * (extension fields). A `consolidated_metadata` member, if present, is
  * checked against the envelope the core spec fixes; the documents it lists
- * are checked as JSON only (`validateConsolidatedMetadataV3` reads them).
+ * are checked as user data only (`validateConsolidatedMetadataV3` reads
+ * them). Without `checkEntries`, not even that: for a caller that reads the
+ * listed documents itself, so a problem in one is reported once.
  */
-function groupMetadataV3Problems(value: unknown): PathedIssue[] {
+function groupMetadataV3Problems(value: unknown, checkEntries = true): PathedIssue[] {
   if (!isPlainObject(value)) {
     return [problem([], "expected an object", "invalid_type")];
   }
@@ -960,7 +962,7 @@ function groupMetadataV3Problems(value: unknown): PathedIssue[] {
     problems.push(
       ...prefix(
         ZARR_V3_CONSOLIDATED_METADATA_KEY,
-        consolidatedEnvelopeProblems(doc[ZARR_V3_CONSOLIDATED_METADATA_KEY], true),
+        consolidatedEnvelopeProblems(doc[ZARR_V3_CONSOLIDATED_METADATA_KEY], checkEntries),
       ),
     );
   }
@@ -987,7 +989,7 @@ function metadataV3Problems(value: unknown): PathedIssue[] {
   if (nodeType === "group") {
     const doc = value as Record<string, unknown>;
     return [
-      ...groupMetadataV3Problems(doc),
+      ...groupMetadataV3Problems(doc, false),
       ...prefix(
         ZARR_V3_CONSOLIDATED_METADATA_KEY,
         consolidatedEntriesV3Problems(doc[ZARR_V3_CONSOLIDATED_METADATA_KEY], 0),
