@@ -830,16 +830,7 @@ function consolidatedEntriesV3Problems(value: unknown, depth: number): PathedIss
       );
     }
     const { nodeType, problems: typeProblems } = nodeTypeV3(entry);
-    let entryProblems = typeProblems;
-    if (nodeType === undefined && isPlainObject(entry)) {
-      // A document that is no node is still checked as the user data a
-      // group document holds, apart from the members already judged.
-      for (const [member, value] of Object.entries(entry)) {
-        if (member !== "zarr_format" && member !== "node_type") {
-          append(entryProblems, prefix(member, userDataProblems(value)));
-        }
-      }
-    }
+    let entryProblems: PathedIssue[];
     if (nodeType === "array") {
       entryProblems = arrayMetadataV3Problems(entry);
     } else if (nodeType === "group") {
@@ -851,6 +842,17 @@ function consolidatedEntriesV3Problems(value: unknown, depth: number): PathedIss
           consolidatedEntriesV3Problems(nested, depth + 1),
         );
         listings.set(key, (nested as { metadata: Record<string, unknown> }).metadata);
+      }
+    } else {
+      // A document that is no node is still checked as the user data a
+      // group document holds, apart from the members already judged.
+      entryProblems = [...typeProblems];
+      if (isPlainObject(entry)) {
+        for (const [member, value] of Object.entries(entry)) {
+          if (member !== "zarr_format" && member !== "node_type") {
+            append(entryProblems, prefix(member, userDataProblems(value)));
+          }
+        }
       }
     }
     append(problems, prefix("metadata", prefix(key, entryProblems)));
@@ -1337,35 +1339,21 @@ function parseJsonText(text: string): unknown {
     const marks = new Map<unknown, number>(
       NON_FINITE_TOKENS.map((token) => [nonFiniteMark(nonce, token), NON_FINITE_VALUES[token]]),
     );
+    // A token where an object key belongs (`{NaN: 1}`) becomes a key, which
+    // the reviver sees but cannot turn back; such text is not JSON either way.
+    let keyed = false;
     let parsed: unknown;
     try {
-      parsed = JSON.parse(out, (_key, value: unknown) => marks.get(value) ?? value);
+      parsed = JSON.parse(out, (key, value: unknown) => {
+        if (key.includes(nonce)) keyed = true;
+        return marks.get(value) ?? value;
+      });
     } catch {
       throw error;
     }
-    // A token where an object key belongs (`{NaN: 1}`) became a key, which
-    // the reviver never sees; such text is not JSON either way.
-    if (holdsKeyWith(parsed, nonce)) throw error;
+    if (keyed) throw error;
     return parsed;
   }
-}
-
-/** Whether any object key inside `value` contains `fragment`. */
-function holdsKeyWith(value: unknown, fragment: string): boolean {
-  const pending: unknown[] = [value];
-  while (pending.length > 0) {
-    const item = pending.pop();
-    if (Array.isArray(item)) {
-      // One push per element: spreading a large array overflows the stack.
-      for (const entry of item) pending.push(entry);
-    } else if (typeof item === "object" && item !== null) {
-      for (const [key, entry] of Object.entries(item)) {
-        if (key.includes(fragment)) return true;
-        pending.push(entry);
-      }
-    }
-  }
-  return false;
 }
 
 /**
@@ -1407,7 +1395,9 @@ export function loadStoreJson(mapping: StoreMapping, key: string): unknown {
 
 /** `JSON.stringify`, but writing each non-finite number as the bare token Python's `json` module writes. */
 function stringifyNonFinite(value: unknown, indent: number | string | undefined): string {
-  const nonce = freshNonce("");
+  // Chosen against the document's own text, as on the read path, so no
+  // string in the document can hold a marker.
+  const nonce = freshNonce(JSON.stringify(value) ?? "");
   const text = JSON.stringify(
     value,
     (_key, item: unknown) => {

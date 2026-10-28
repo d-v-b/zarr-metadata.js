@@ -3,7 +3,7 @@
  * fixtures must be JSON text: hostile runtime values (depth bombs, cycles,
  * BigInt, non-plain objects) and the byte-level store entry points.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   dumpStoreJson,
@@ -22,6 +22,7 @@ import {
   validateGroupMetadataV3,
   validateJson,
   validateMetadataV3,
+  validateSemanticsV3,
 } from "../src/index.js";
 
 const VALID_ARRAY = {
@@ -149,6 +150,10 @@ describe("loadStoreJson", () => {
     }
   });
 
+  it("reads a NaN value under a key named NaN", () => {
+    expect(loadStoreJson({ key: '{"NaN": NaN}' }, "key")).toEqual({ NaN: NaN });
+  });
+
   it("reads the bare NaN, Infinity and -Infinity tokens zarr-python writes, outside strings only", () => {
     const text = '{"a": NaN, "b": [Infinity, -Infinity], "c": "NaN \\" Infinity", "NaN": 1}';
     expect(loadStoreJson({ key: text }, "key")).toEqual({
@@ -168,7 +173,16 @@ describe("loadStoreJson", () => {
   });
 
   it("reports malformed JSON, invalid UTF-8, and misplaced constants as invalid_json", () => {
-    for (const raw of ["{", new Uint8Array([0xff, 0xfe]), "[1 NaN]", "NaNa", "nan", '{NaN: 1}', '{"a": {Infinity: []}}']) {
+    const malformed = [
+      "{",
+      new Uint8Array([0xff, 0xfe]),
+      "[1 NaN]",
+      "NaNa",
+      "nan",
+      "{NaN: 1}",
+      '{"a": {Infinity: []}}',
+    ];
+    for (const raw of malformed) {
       let kind: string | undefined;
       try {
         loadStoreJson({ key: raw }, "key");
@@ -189,6 +203,36 @@ describe("dumpStoreJson", () => {
   it("throws on non-JSON values instead of silently writing null", () => {
     expect(() => dumpStoreJson({ fill_value: NaN })).toThrow(MetadataValidationError);
     expect(() => dumpStoreJson(new Map())).toThrow(MetadataValidationError);
+  });
+
+  describe("when the document already holds the marker the first draw would give", () => {
+    // The token markers carry a nonce drawn from Math.random; forcing the
+    // first draw makes the document collide with it, so only a nonce chosen
+    // against the document's own text keeps the document as written.
+    const first = 0.123456789;
+    const marker = `\u0000zarr-metadata-${first.toString(36).slice(2)}-NaN`;
+    const forceDraws = () => vi.spyOn(Math, "random").mockReturnValueOnce(first).mockReturnValueOnce(0.987654321);
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("writes the string as written", () => {
+      const draws = forceDraws();
+      const document = { attributes: { a: NaN, note: marker } };
+      const text = new TextDecoder().decode(dumpStoreJson(document, { allowNonFinite: true }));
+      // A second draw happens only when the first collided, so this also
+      // confirms the planted marker still matches the first draw's.
+      expect(draws).toHaveBeenCalledTimes(2);
+      expect(text).toContain('"a":NaN');
+      expect(JSON.parse(text.replace("NaN", "null"))).toEqual({ attributes: { a: null, note: marker } });
+    });
+
+    it("reads the string as written, as a key", () => {
+      const draws = forceDraws();
+      const text = `{${JSON.stringify(marker)}: 1, "a": NaN}`;
+      expect(loadStoreJson({ k: text }, "k")).toEqual({ [marker]: 1, a: NaN });
+      expect(draws).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("writes non-finite numbers as bare tokens when asked, and reads them back", () => {
@@ -218,18 +262,34 @@ describe("validateGroupMetadataV3", () => {
 });
 
 describe("two listings of one group", () => {
-  it("differ when one attribute is NaN and the other null", () => {
-    const group = (attributes: Record<string, unknown>) => ({ zarr_format: 3, node_type: "group", attributes });
-    const listing = (metadata: Record<string, unknown>) => ({ kind: "inline", must_understand: false, metadata });
-    const problems = flattenTree(
+  const group = (attributes: Record<string, unknown>) => ({ zarr_format: 3, node_type: "group", attributes });
+  const listing = (metadata: Record<string, unknown>) => ({ kind: "inline", must_understand: false, metadata });
+  /** The problems of a listing where the group `g` lists `x` as `nested`, and the outer listing lists it as `flat`. */
+  const compared = (nested: unknown, flat: unknown) =>
+    flattenTree(
       validateConsolidatedMetadataV3(
-        listing({
-          g: { zarr_format: 3, node_type: "group", consolidated_metadata: listing({ x: group({ a: NaN }) }) },
-          "g/x": group({ a: null }),
-        }),
+        listing({ g: { zarr_format: 3, node_type: "group", consolidated_metadata: listing({ x: nested }) }, "g/x": flat }),
       ),
     ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
-    expect(problems).toEqual(["metadata.g.consolidated_metadata.metadata.x: invalid_value"]);
+  const proto = (value: number) => JSON.parse(`{"zarr_format": 3, "node_type": "group", "__proto__": ${value}}`) as unknown;
+
+  it("read alike when written alike, non-finite numbers and __proto__ members included", () => {
+    for (const value of [NaN, Infinity, -Infinity, null, 1]) {
+      expect(compared(group({ a: value }), group({ a: value })), String(value)).toEqual([]);
+    }
+    expect(compared(proto(1), proto(1))).toEqual([]);
+  });
+
+  it("differ when an attribute or an extra member is written otherwise", () => {
+    const pairs: Array<[unknown, unknown]> = [
+      [group({ a: NaN }), group({ a: null })],
+      [group({ a: Infinity }), group({ a: -Infinity })],
+      [group({ a: Infinity }), group({ a: null })],
+      [proto(1), proto(2)],
+    ];
+    for (const [nested, flat] of pairs) {
+      expect(compared(nested, flat)).toEqual(["metadata.g.consolidated_metadata.metadata.x: invalid_value"]);
+    }
   });
 });
 
@@ -276,6 +336,23 @@ describe("validateMetadataV3 on a group", () => {
       }),
     ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
     expect(problems).toEqual(["consolidated_metadata.metadata.a.attributes.a: invalid_type"]);
+  });
+});
+
+describe("validateMetadataV3 on a group, for a listed document that is no node", () => {
+  it("checks it once, as user data", () => {
+    const problems = flattenTree(
+      validateMetadataV3({
+        zarr_format: 3,
+        node_type: "group",
+        consolidated_metadata: { kind: "inline", must_understand: false, metadata: { b: { node_type: "x", c: new Set() } } },
+      }),
+    ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems.sort()).toEqual([
+      "consolidated_metadata.metadata.b.c: invalid_type",
+      "consolidated_metadata.metadata.b.node_type: invalid_value",
+      "consolidated_metadata.metadata.b.zarr_format: missing_key",
+    ]);
   });
 });
 
@@ -356,6 +433,55 @@ describe("group ↔ consolidated recursion depth cap (round 2)", () => {
     expect(flattenTree(validateMetadataV3(deep))).toHaveLength(1);
     // Shallow chains still validate cleanly.
     expect(flattenTree(validateGroupMetadataV3(nestedGroups(10)))).toEqual([]);
+  });
+
+  it("stops both layers at the same nested listing, wherever the depth cap falls", () => {
+    // A chain of listed groups, each listing the next, with an array that
+    // breaks a semantic rule in the deepest listing. Each listed group's own
+    // check walks the listings below it as JSON, so a long enough chain
+    // meets the depth cap inside the first listed group's listing; neither
+    // layer then reads further. The planted problem must be judged exactly
+    // when no depth problem is reported, whatever MAX_JSON_DEPTH is.
+    const listing = (metadata: Record<string, unknown>) => ({ kind: "inline", must_understand: false, metadata });
+    const planted = {
+      zarr_format: 3,
+      node_type: "array",
+      shape: [4],
+      data_type: "int8",
+      chunk_grid: { name: "regular", configuration: { chunk_shape: [2] } },
+      chunk_key_encoding: "default",
+      fill_value: 300,
+      codecs: ["bytes"],
+    };
+    const chain = (levels: number) => {
+      let metadata: Record<string, unknown> = { a: planted };
+      for (let level = 0; level < levels; level++) {
+        metadata = { g: { zarr_format: 3, node_type: "group", consolidated_metadata: listing(metadata) } };
+      }
+      return { zarr_format: 3, node_type: "group", consolidated_metadata: listing(metadata) };
+    };
+    const inFirstListing = ["consolidated_metadata", "metadata", "g", "consolidated_metadata", "metadata"];
+    const seen = new Set<boolean>();
+    for (let levels = 1; levels <= MAX_JSON_DEPTH / 2; levels++) {
+      const depth = flattenTree(validateMetadataV3(chain(levels))).filter((issue) =>
+        issue.message.includes("nesting depth"),
+      );
+      for (const issue of depth) expect(issue.path.slice(0, inFirstListing.length)).toEqual(inFirstListing);
+      const plantedAt = [
+        "consolidated_metadata",
+        ...Array.from({ length: levels }, () => ["metadata", "g", "consolidated_metadata"]).flat(),
+        "metadata",
+        "a",
+        "fill_value",
+      ];
+      const judged = flattenTree(validateSemanticsV3(chain(levels))).some(
+        (issue) => issue.kind === "invalid_value" && JSON.stringify(issue.path) === JSON.stringify(plantedAt),
+      );
+      expect(judged, `${levels} levels`).toBe(depth.length === 0);
+      seen.add(judged);
+    }
+    // The range crosses the cap, so both outcomes were checked.
+    expect([...seen].sort()).toEqual([false, true]);
   });
 
   it("terminates on a circular consolidated graph", async () => {
