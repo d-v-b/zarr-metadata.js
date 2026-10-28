@@ -108,8 +108,9 @@ export function validateArraySemanticsV3(value: unknown): ErrorTree {
   return treeOf(isPlainObject(value) ? arraySemanticsIssues(value) : []);
 }
 
-// Matches the structural validators' MAX_JSON_DEPTH; the structural layer
-// reports the depth violation, this layer just stops descending.
+// Matches the structural validators' MAX_JSON_DEPTH, counted the same way
+// (a group's own listing is at depth 0); the structural layer reports the
+// depth violation, this layer just stops descending.
 const MAX_CONSOLIDATED_DEPTH = 64;
 
 /**
@@ -157,6 +158,6 @@ export function validateSemanticsV3(value: unknown): ErrorTree {
   if (value["node_type"] === "array") return treeOf(arraySemanticsIssues(value));
   if (value["node_type"] !== "group") return treeOf([]);
   return treeOf(
-    prefixed(["consolidated_metadata"], consolidatedSemanticsIssues(value["consolidated_metadata"], 1)),
+    prefixed(["consolidated_metadata"], consolidatedSemanticsIssues(value["consolidated_metadata"], 0)),
   );
 }
