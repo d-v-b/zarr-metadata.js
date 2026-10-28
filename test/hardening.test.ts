@@ -217,17 +217,21 @@ describe("dumpStoreJson", () => {
     });
 
     it("writes the string as written", () => {
-      forceDraws();
+      const draws = forceDraws();
       const document = { attributes: { a: NaN, note: marker } };
       const text = new TextDecoder().decode(dumpStoreJson(document, { allowNonFinite: true }));
+      // A second draw happens only when the first collided, so this also
+      // confirms the planted marker still matches the first draw's.
+      expect(draws).toHaveBeenCalledTimes(2);
       expect(text).toContain('"a":NaN');
       expect(JSON.parse(text.replace("NaN", "null"))).toEqual({ attributes: { a: null, note: marker } });
     });
 
     it("reads the string as written, as a key", () => {
-      forceDraws();
+      const draws = forceDraws();
       const text = `{${JSON.stringify(marker)}: 1, "a": NaN}`;
       expect(loadStoreJson({ k: text }, "k")).toEqual({ [marker]: 1, a: NaN });
+      expect(draws).toHaveBeenCalledTimes(2);
     });
   });
 
