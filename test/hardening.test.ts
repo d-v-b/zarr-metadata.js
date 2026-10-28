@@ -159,6 +159,14 @@ describe("loadStoreJson", () => {
     });
   });
 
+  it("reads a large document holding a NaN", () => {
+    const data = Array.from({ length: 200_000 }, (_, index) => index);
+    const text = JSON.stringify({ data, attributes: { x: 0 } }, null, 2).replace('"x": 0', '"x": NaN');
+    const value = loadStoreJson({ key: text }, "key") as { data: number[]; attributes: { x: number } };
+    expect(value.data).toHaveLength(200_000);
+    expect(value.attributes.x).toBeNaN();
+  });
+
   it("reports malformed JSON, invalid UTF-8, and misplaced constants as invalid_json", () => {
     for (const raw of ["{", new Uint8Array([0xff, 0xfe]), "[1 NaN]", "NaNa", "nan", '{NaN: 1}', '{"a": {Infinity: []}}']) {
       let kind: string | undefined;

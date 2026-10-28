@@ -1299,29 +1299,31 @@ function parseJsonText(text: string): unknown {
     return JSON.parse(text);
   } catch (error) {
     const nonce = freshNonce(text);
-    let out = "";
-    let found = false;
+    // The text is copied in runs between the tokens it replaces, so a large
+    // document is not rebuilt one character at a time.
+    const pieces: string[] = [];
+    let runStart = 0;
     let index = 0;
     scan: while (index < text.length) {
       if (text[index] === '"') {
-        let end = index + 1;
-        while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
-        out += text.slice(index, end + 1);
-        index = end + 1;
+        index += 1;
+        while (index < text.length && text[index] !== '"') index += text[index] === "\\" ? 2 : 1;
+        index += 1;
         continue;
       }
       for (const token of NON_FINITE_TOKENS) {
         if (text.startsWith(token, index)) {
-          out += JSON.stringify(nonFiniteMark(nonce, token));
+          pieces.push(text.slice(runStart, index), JSON.stringify(nonFiniteMark(nonce, token)));
           index += token.length;
-          found = true;
+          runStart = index;
           continue scan;
         }
       }
-      out += text[index];
       index += 1;
     }
-    if (!found) throw error;
+    if (pieces.length === 0) throw error;
+    pieces.push(text.slice(runStart));
+    const out = pieces.join("");
     const marks = new Map<unknown, number>(
       NON_FINITE_TOKENS.map((token) => [nonFiniteMark(nonce, token), NON_FINITE_VALUES[token]]),
     );
@@ -1344,7 +1346,8 @@ function holdsKeyWith(value: unknown, fragment: string): boolean {
   while (pending.length > 0) {
     const item = pending.pop();
     if (Array.isArray(item)) {
-      pending.push(...item);
+      // One push per element: spreading a large array overflows the stack.
+      for (const entry of item) pending.push(entry);
     } else if (typeof item === "object" && item !== null) {
       for (const [key, entry] of Object.entries(item)) {
         if (key.includes(fragment)) return true;
