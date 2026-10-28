@@ -22,6 +22,7 @@ import {
   validateGroupMetadataV3,
   validateJson,
   validateMetadataV3,
+  validateSemanticsV3,
 } from "../src/index.js";
 
 const VALID_ARRAY = {
@@ -149,6 +150,10 @@ describe("loadStoreJson", () => {
     }
   });
 
+  it("reads a NaN value under a key named NaN", () => {
+    expect(loadStoreJson({ key: '{"NaN": NaN}' }, "key")).toEqual({ NaN: NaN });
+  });
+
   it("reads the bare NaN, Infinity and -Infinity tokens zarr-python writes, outside strings only", () => {
     const text = '{"a": NaN, "b": [Infinity, -Infinity], "c": "NaN \\" Infinity", "NaN": 1}';
     expect(loadStoreJson({ key: text }, "key")).toEqual({
@@ -168,7 +173,16 @@ describe("loadStoreJson", () => {
   });
 
   it("reports malformed JSON, invalid UTF-8, and misplaced constants as invalid_json", () => {
-    for (const raw of ["{", new Uint8Array([0xff, 0xfe]), "[1 NaN]", "NaNa", "nan", '{NaN: 1}', '{"a": {Infinity: []}}']) {
+    const malformed = [
+      "{",
+      new Uint8Array([0xff, 0xfe]),
+      "[1 NaN]",
+      "NaNa",
+      "nan",
+      "{NaN: 1}",
+      '{"a": {Infinity: []}}',
+    ];
+    for (const raw of malformed) {
       let kind: string | undefined;
       try {
         loadStoreJson({ key: raw }, "key");
@@ -189,6 +203,12 @@ describe("dumpStoreJson", () => {
   it("throws on non-JSON values instead of silently writing null", () => {
     expect(() => dumpStoreJson({ fill_value: NaN })).toThrow(MetadataValidationError);
     expect(() => dumpStoreJson(new Map())).toThrow(MetadataValidationError);
+  });
+
+  it("keeps a string that reads like the internal token marker as written", () => {
+    const document = { attributes: { a: NaN, note: "\u0000zarr-metadata-x-NaN" } };
+    const bytes = dumpStoreJson(document, { allowNonFinite: true });
+    expect(loadStoreJson({ k: bytes }, "k")).toEqual(document);
   });
 
   it("writes non-finite numbers as bare tokens when asked, and reads them back", () => {
@@ -218,18 +238,34 @@ describe("validateGroupMetadataV3", () => {
 });
 
 describe("two listings of one group", () => {
-  it("differ when one attribute is NaN and the other null", () => {
-    const group = (attributes: Record<string, unknown>) => ({ zarr_format: 3, node_type: "group", attributes });
-    const listing = (metadata: Record<string, unknown>) => ({ kind: "inline", must_understand: false, metadata });
-    const problems = flattenTree(
+  const group = (attributes: Record<string, unknown>) => ({ zarr_format: 3, node_type: "group", attributes });
+  const listing = (metadata: Record<string, unknown>) => ({ kind: "inline", must_understand: false, metadata });
+  /** The problems of a listing where the group `g` lists `x` as `nested`, and the outer listing lists it as `flat`. */
+  const compared = (nested: unknown, flat: unknown) =>
+    flattenTree(
       validateConsolidatedMetadataV3(
-        listing({
-          g: { zarr_format: 3, node_type: "group", consolidated_metadata: listing({ x: group({ a: NaN }) }) },
-          "g/x": group({ a: null }),
-        }),
+        listing({ g: { zarr_format: 3, node_type: "group", consolidated_metadata: listing({ x: nested }) }, "g/x": flat }),
       ),
     ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
-    expect(problems).toEqual(["metadata.g.consolidated_metadata.metadata.x: invalid_value"]);
+  const proto = (value: number) => JSON.parse(`{"zarr_format": 3, "node_type": "group", "__proto__": ${value}}`) as unknown;
+
+  it("read alike when written alike, non-finite numbers and __proto__ members included", () => {
+    for (const value of [NaN, Infinity, -Infinity, null, 1]) {
+      expect(compared(group({ a: value }), group({ a: value })), String(value)).toEqual([]);
+    }
+    expect(compared(proto(1), proto(1))).toEqual([]);
+  });
+
+  it("differ when an attribute or an extra member is written otherwise", () => {
+    const pairs: Array<[unknown, unknown]> = [
+      [group({ a: NaN }), group({ a: null })],
+      [group({ a: Infinity }), group({ a: -Infinity })],
+      [group({ a: Infinity }), group({ a: null })],
+      [proto(1), proto(2)],
+    ];
+    for (const [nested, flat] of pairs) {
+      expect(compared(nested, flat)).toEqual(["metadata.g.consolidated_metadata.metadata.x: invalid_value"]);
+    }
   });
 });
 
@@ -276,6 +312,23 @@ describe("validateMetadataV3 on a group", () => {
       }),
     ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
     expect(problems).toEqual(["consolidated_metadata.metadata.a.attributes.a: invalid_type"]);
+  });
+});
+
+describe("validateMetadataV3 on a group, for a listed document that is no node", () => {
+  it("checks it once, as user data", () => {
+    const problems = flattenTree(
+      validateMetadataV3({
+        zarr_format: 3,
+        node_type: "group",
+        consolidated_metadata: { kind: "inline", must_understand: false, metadata: { b: { node_type: "x", c: new Set() } } },
+      }),
+    ).map((issue) => `${issue.path.join(".")}: ${issue.kind}`);
+    expect(problems.sort()).toEqual([
+      "consolidated_metadata.metadata.b.c: invalid_type",
+      "consolidated_metadata.metadata.b.node_type: invalid_value",
+      "consolidated_metadata.metadata.b.zarr_format: missing_key",
+    ]);
   });
 });
 
@@ -356,6 +409,29 @@ describe("group ↔ consolidated recursion depth cap (round 2)", () => {
     expect(flattenTree(validateMetadataV3(deep))).toHaveLength(1);
     // Shallow chains still validate cleanly.
     expect(flattenTree(validateGroupMetadataV3(nestedGroups(10)))).toEqual([]);
+  });
+
+  it("stops both layers at the same nested listing", () => {
+    // A chain of listed groups, each listing the next, with an array that
+    // breaks a semantic rule in the deepest listing. Each listed group's
+    // JSON check walks the listings below it, so the depth cap is met at
+    // the 22nd listing, and both layers stop there.
+    const listing = (metadata: Record<string, unknown>) => ({ kind: "inline", must_understand: false, metadata });
+    const chain = (levels: number) => {
+      let metadata: Record<string, unknown> = { a: { ...VALID_ARRAY, data_type: "int8", fill_value: 300 } };
+      for (let level = 0; level < levels; level++) {
+        metadata = { g: { zarr_format: 3, node_type: "group", consolidated_metadata: listing(metadata) } };
+      }
+      return { zarr_format: 3, node_type: "group", consolidated_metadata: listing(metadata) };
+    };
+    const read = (levels: number) => ({
+      depth: flattenTree(validateMetadataV3(chain(levels))).some((issue) => issue.message.includes("nesting depth")),
+      deepest: flattenTree(validateSemanticsV3(chain(levels))).some(
+        (issue) => issue.path.filter((part) => part === "g").length === levels,
+      ),
+    });
+    expect(read(21)).toEqual({ depth: false, deepest: true });
+    expect(read(22)).toEqual({ depth: true, deepest: false });
   });
 
   it("terminates on a circular consolidated graph", async () => {
